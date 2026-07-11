@@ -10,14 +10,11 @@ from datetime import datetime, timedelta
 # =====================================================================
 def init_firestore():
     try:
-        # Sprawdzamy czy w ogóle istnieją sekrety
         if "connections" not in st.secrets:
             st.error("❌ BŁĄD: Brak sekcji [connections] w pliku secrets.toml!")
             return None
         
         key_dict = st.secrets["connections"]["firestore"]
-        
-        # Sprawdzamy czy klucz firestore istnieje wewnątrz connections
         if not key_dict:
             st.error("❌ BŁĄD: Sekcja [connections.firestore] jest pusta!")
             return None
@@ -26,13 +23,13 @@ def init_firestore():
         return firestore.Client(credentials=creds, project=key_dict["project_id"])
     
     except Exception as e:
-        # To pokaże Ci dokładnie co jest nie tak (np. brak pola w kluczu)
         st.error(f"❌ KRYTYCZNY BŁĄD FIRESTORE: {str(e)}")
         return None
 
-# Wywołanie:
+# Prawidłowe wywołanie:
 db = init_firestore()
-if db is None:db = init_fire
+
+if db is None:
     st.stop() # Zatrzymaj aplikację, jeśli nie możemy połączyć się z bazą
 
 def pobierz_strukture():
