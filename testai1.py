@@ -4,6 +4,7 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime, timedelta
+
 # =====================================================================
 # KONFIGURACJA FIRESTORE
 # =====================================================================
@@ -19,59 +20,43 @@ def pobierz_strukture():
     struktura = {}
     for doc in docs:
         dane = doc.to_dict().get("lista_tematow", [])
-        # --- KLUCZOWA POPRAWKA ---
-        # Jeśli dane są już listą, używamy ich. Jeśli to string, pakujemy w listę.
         if isinstance(dane, list):
             struktura[doc.id] = dane
         else:
             struktura[doc.id] = [str(dane)]
     return struktura
+
 def wczytaj_profil_z_chmury(identyfikator):
     doc = db.collection("postepy_uczniow").document(identyfikator).get()
     return doc.to_dict() if doc.exists else None
 
 def zapisz_profil_w_chmurze():
-    if "zalogowany_id" in st.session_state:
-        historia = st.session_state.get("historia_czatow", {})
-        if not isinstance(historia, dict):
-            historia = {}
-
+    if "zalogowany_id" in st.session_state and "user_api_key" in st.session_state:
         dane_do_zapisu = {
             "user_api_key": st.session_state.user_api_key,
-            "postep_tematow": st.session_state.postep_tematow,
+            "postep_tematow": st.session_state.get("postep_tematow", {}),
             "historia_czatow": st.session_state.get("historia_czatow", {}),
             "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
         }
         db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).set(dane_do_zapisu, merge=True)
+
 def zapisz_historie_w_chmurze(temat, wiadomosci):
     if "zalogowany_id" in st.session_state:
         profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-        
-        # ZABEZPIECZENIE: Pobierz historię tylko jeśli to słownik, inaczej stwórz pusty
-        historia_pelna = profil.get("historia_czatow")
-        if not isinstance(historia_pelna, dict):
-            historia_pelna = {}
-        
-        # Teraz bezpiecznie aktualizujemy
-        historia_pelna[temat] = wiadomosci
-        
-        # Zapis do bazy
-        db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
-            "historia_czatow": historia_pelna
-        })
-# Przygotowanie listy dostępnych tematów
+        if profil:
+            historia_pelna = profil.get("historia_czatow")
+            if not isinstance(historia_pelna, dict):
+                historia_pelna = {}
+            
+            historia_pelna[temat] = wiadomosci
+            db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
+                "historia_czatow": historia_pelna
+            })
+
 def czy_temat_niezaliczone(t):
     dane = st.session_state.postep_tematow.get(t, "Nie rozpoczęte")
-    # Wyciągamy status bezpiecznie, niezależnie czy to słownik czy string
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
-
-    # Używamy nowej funkcji filtrującej
-    wybor_tematu = st.selectbox(
-        "Wybierz temat do rozpoczęcia:", 
-        [t for t in dostepne if czy_temat_niezaliczone(t)],
-        key="glowny_wybor_tematu"
-    )
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
@@ -128,9 +113,8 @@ FAZA OCENIANIA:
 - Wynik = (skończone / wszystkie).
 - Skala: 1.0-0.9 = 6; 0.89-0.7 = 5; 0.69-0 = 1.
 - Podaj wynik liczbowy i ocenę.
-
-
 """
+
 def zapytaj_ai(historia_rozmowy, temat_kontekst):
     if not st.session_state.get("user_api_key"):
         return "❌ BŁĄD: Brak klucza API w profilu!"
@@ -163,8 +147,8 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst):
 if "zalogowany_id" not in st.session_state:
     st.title("🏫 Logowanie do Systemu")
     id_input = st.text_input("Identyfikator:").strip()
-    klucz_input = st.text_input("Klucz Gemini API (tylko przy twożeniu konta)", type="password")
-    haslo_tworzenia = st.text_input("Hasło (tylko przy twożeniu konta):", type="password")
+    klucz_input = st.text_input("Klucz Gemini API (tylko przy tworzeniu konta)", type="password")
+    haslo_tworzenia = st.text_input("Hasło (tylko przy tworzeniu konta):", type="password")
     
     if st.button("Zaloguj / Zarejestruj"):
         dane = wczytaj_profil_z_chmury(id_input)
@@ -173,7 +157,6 @@ if "zalogowany_id" not in st.session_state:
             st.session_state.zalogowany_id = id_input
             st.session_state.user_api_key = dane.get("user_api_key", "")
             
-            # --- KLUCZOWE: Inicjalizacja postępów z bazy ---
             surowe_postepy = dane.get("postep_tematow", {})
             st.session_state.postep_tematow = surowe_postepy 
             st.session_state.historia_czatow = dane.get("historia_czatow", {})
@@ -185,7 +168,8 @@ if "zalogowany_id" not in st.session_state:
                 st.success("Konto utworzone! Zaloguj się.")
             else:
                 st.error("Błędny identyfikator lub hasło!")
-    st.stop() # ZATRZYMUJE CAŁĄ RESZTĘ, DOPÓKI NIE BĘDZIE ZALOGOWANY
+    st.stop() 
+
 if "struktura_dydaktyczna" not in st.session_state:
     st.session_state.struktura_dydaktyczna = pobierz_strukture()
 
@@ -215,7 +199,6 @@ with st.sidebar:
         
     st.markdown("---")
     
-    # UNIKALNY KLUCZ ROZWIĄZUJE BŁĄD DUPLICATE ELEMENT
     wybor_tematu = st.selectbox(
         "Wybierz temat do rozpoczęcia:", 
         [t for t in dostepne if czy_temat_niezaliczone(t)],
@@ -226,23 +209,18 @@ with st.sidebar:
         st.session_state.aktualny_temat = wybor_tematu
         st.session_state.licznik_zadan = 0
         
-        # 1. NAJPIERW POBIERZ PROFIL
         profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
         
-        # 2. TERAZ MOŻESZ Z NIEGO KORZYSTAĆ
         if profil and isinstance(profil, dict):
-            # Wczytaj zapisaną teorię
             st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
             st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
             
-            # Wczytaj historię
             historia = profil.get("historia_czatow", {})
             st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
         else:
             st.session_state.teoria_lekcji = None
             st.session_state.messages = []
             
-        # 3. Jeśli nie ma historii, wygeneruj lekcję
         if not st.session_state.messages:
             with st.spinner("Przygotowuję lekcję..."):
                 instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
@@ -250,7 +228,6 @@ with st.sidebar:
                 
                 if "[TEORIA]" in odp and "[ZADANIE]" in odp:
                     st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
-                    # Zapisz do sesji i bazy
                     if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
                     st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
                     
@@ -259,6 +236,7 @@ with st.sidebar:
                 else:
                     st.session_state.teoria_lekcji = odp
         st.rerun()
+
 # =====================================================================
 # EKRAN GŁÓWNY
 # =====================================================================
@@ -270,9 +248,7 @@ if "aktualny_temat" not in st.session_state:
     dzis = datetime.now()
     tygodnie_dane = {"Tydzień 1": 0, "Tydzień 2": 0, "Tydzień 3": 0, "Tydzień 4": 0}
 
-    # Pętla zliczająca postępy
     for temat, dane in st.session_state.postep_tematow.items():
-        # Obsługa formatu dict (nowy) oraz string (stary/pozostałości)
         status = dane.get("status") if isinstance(dane, dict) else dane
         data_str = dane.get("data") if isinstance(dane, dict) else None
         
@@ -316,21 +292,17 @@ else:
         if "aktualny_temat" not in st.session_state:
             st.error("Błąd: Nie wybrano tematu!")
         else:
-            # 1. POBIERZ AKTUALNY STAN Z BAZY (żeby nie pracować na starej kopii)
             aktualny_profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
             if aktualny_profil:
                 st.session_state.postep_tematow = aktualny_profil.get("postep_tematow", {})
 
-            # 2. SPRAWDŹ STATUS
-            stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat)
+            stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
             status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
             
-            # 3. ZMIEŃ NA "W trakcie" TYLKO JEŚLI JEST "Nie rozpoczęte"
             if status == "Nie rozpoczęte" or status is None:
                 st.session_state.postep_tematow[st.session_state.aktualny_temat] = "W trakcie"
-                zapisz_profil_w_chmurze() # Zapisz do bazy!
+                zapisz_profil_w_chmurze() 
             
-            # 4. KONTYNUUJ LOGIKĘ CZATU
             st.session_state.messages.append({"role": "user", "content": prompt})
             
             with st.spinner("Myślę..."):
@@ -338,21 +310,18 @@ else:
                 
                 if odp.startswith("❌"):
                     st.error(f"AI zwróciło błąd: {odp}")
-                if "[TEORIA]" in odp and "[ZADANIE]" in odp:
+                elif "[TEORIA]" in odp and "[ZADANIE]" in odp:
                     st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
                     
-                    # Zapisz do sesji i do bazy
                     if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
                     st.session_state.teorie_lekcji[st.session_state.aktualny_temat] = st.session_state.teoria_lekcji
-                    zapisz_profil_w_chmurze() # Teraz teoria zostanie zapisana na stałe
+                    zapisz_profil_w_chmurze() 
                 else:
-                    # Logika licznika
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = st.session_state.get("licznik_zadan", 0) + 1
                     
                     st.session_state.messages.append({"role": "assistant", "content": odp.replace("[ZALICZONE]", "").strip()})
                     
-                    # Zapis historii
                     if not isinstance(st.session_state.get("historia_czatow"), dict):
                         st.session_state.historia_czatow = {}
                     st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
