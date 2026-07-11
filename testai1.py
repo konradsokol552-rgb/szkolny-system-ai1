@@ -135,7 +135,7 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst):
     if not st.session_state.get("user_api_key"):
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={st.session_state.user_api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={st.session_state.user_api_key}"
     
     # Przygotowanie historii
     contents = []
