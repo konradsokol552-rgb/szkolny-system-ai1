@@ -1,4 +1,5 @@
 streamlit
-google-cloud-firestore
-pandas
 requests
+google-cloud-firestore
+google-auth
+pandas
