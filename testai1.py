@@ -32,7 +32,7 @@ def init_firestore():
 
 # Wywołanie:
 db = init_firestore()
-if db is None:
+if db is None:db = init_fire
     st.stop() # Zatrzymaj aplikację, jeśli nie możemy połączyć się z bazą
 
 def pobierz_strukture():
