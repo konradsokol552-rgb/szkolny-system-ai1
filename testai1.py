@@ -48,10 +48,25 @@ def wczytaj_profil_z_chmury(identyfikator):
     return doc.to_dict() if doc.exists else None
 
 def zapisz_profil_w_chmurze():
-    if "zalogowany_id" in st.session_state and "user_api_key" in st.session_state:
+    if "zalogowany_id" in st.session_state:
+        # Pobieramy aktualny postep_tematow
+        postepy = st.session_state.get("postep_tematow", {})
+        
+        # Jeśli jesteśmy w trakcie jakiegoś tematu, aktualizujemy jego licznik
+        if "aktualny_temat" in st.session_state:
+            temat = st.session_state.aktualny_temat
+            licznik = st.session_state.get("licznik_zadan", 0)
+            
+            # Zmieniamy strukturę na słownik, żeby przechowywać i status i licznik
+            if not isinstance(postepy.get(temat), dict):
+                postepy[temat] = {"status": postepy.get(temat, "W trakcie")}
+            
+            postepy[temat]["licznik"] = licznik
+            st.session_state.postep_tematow = postepy
+
         dane_do_zapisu = {
-            "user_api_key": st.session_state.user_api_key,
-            "postep_tematow": st.session_state.get("postep_tematow", {}),
+            "user_api_key": st.session_state.get("user_api_key", ""),
+            "postep_tematow": postepy,
             "historia_czatow": st.session_state.get("historia_czatow", {}),
             "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
         }
@@ -222,22 +237,42 @@ with st.sidebar:
         key="glowny_wybor_tematu"
     )
     
-    if st.button("Rozpocznij lekcję"):
+if st.button("Rozpocznij lekcję"):
         st.session_state.aktualny_temat = wybor_tematu
-        st.session_state.licznik_zadan = 0
         
+        # 1. Wczytujemy profil z chmury
         profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
         
         if profil and isinstance(profil, dict):
+            # Wczytujemy teorie
             st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
             st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
             
+            # Wczytujemy postępy (potrzebne do sprawdzenia licznika)
+            st.session_state.postep_tematow = profil.get("postep_tematow", {})
+            
+            # --- LOGIKA ODCZYTU LICZNIKA ---
+            stan_tematu = st.session_state.postep_tematow.get(wybor_tematu)
+            
+            # Jeśli stan_tematu to słownik (nowa struktura z licznikiem)
+            if isinstance(stan_tematu, dict):
+                st.session_state.licznik_zadan = stan_tematu.get("licznik", 0)
+            else:
+                # Jeśli to tylko string "W trakcie" lub "Nie rozpoczęte"
+                st.session_state.licznik_zadan = 0
+            # -------------------------------
+            
+            # Wczytujemy historię czatu
             historia = profil.get("historia_czatow", {})
             st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+            
         else:
+            # Fallback jeśli profil nie istnieje
             st.session_state.teoria_lekcji = None
             st.session_state.messages = []
+            st.session_state.licznik_zadan = 0
             
+        # Jeśli historia jest pusta, generujemy lekcję
         if not st.session_state.messages:
             with st.spinner("Przygotowuję lekcję..."):
                 instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
@@ -252,6 +287,7 @@ with st.sidebar:
                     zapisz_profil_w_chmurze()
                 else:
                     st.session_state.teoria_lekcji = odp
+        
         st.rerun()
 
 # =====================================================================
