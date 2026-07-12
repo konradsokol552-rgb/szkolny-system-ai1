@@ -163,9 +163,9 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst):
 # =====================================================================
 if "zalogowany_id" not in st.session_state:
     st.title("🏫 Logowanie do Systemu")
-    id_input = st.text_input("Identyfikator:").strip()
+    id_input = st.text_input("nazwa konta").strip()
     klucz_input = st.text_input("Klucz Gemini API (tylko przy tworzeniu konta)", type="password")
-    haslo_tworzenia = st.text_input("Hasło (tylko przy tworzeniu konta):", type="password")
+    haslo_tworzenia = st.text_input("Hasło (tylko przy tworzeniu konta)", type="password")
     
     if st.button("Zaloguj / Zarejestruj"):
         dane = wczytaj_profil_z_chmury(id_input)
