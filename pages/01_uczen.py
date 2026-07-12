@@ -141,40 +141,10 @@ FAZA OCENIANIA:
 - Podaj wynik liczbowy i ocenę.
 """
 
-def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
-    if not st.session_state.get("user_api_key"):
-        return "❌ BŁĄD: Brak klucza API w profilu!"
-        
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-Flash-Lite:generateContent?key={st.session_state.user_api_key}"
-    
-    historia_do_wyslania = historia_rozmowy[-10:]
-    
-    contents = []
-    for m in historia_do_wyslania:
-        role = "user" if m["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": m["content"]}]})
-    
-    # KOTWICA KONTEKSTOWA
-    dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
-    if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
-        dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie."
-
-    payload = {
-        "contents": contents,
-        "systemInstruction": {"parts": [{"text": f"{SYSTEM_PROMPT}\n\n{dynamiczny_kontekst}"}]}
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 429:
-            raise Exception("Limit 429 przekroczony - ponawiam próbę...")
-            
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"❌ Błąd API ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"❌ Błąd połączenia: {str(e)}"
+def sprawdz_modele():
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={st.session_state.user_api_key}"
+    r = requests.get(url)
+    st.write(r.json()) # To wyświetli w Streamlit surową listę wszystkich modeli
 
 # =====================================================================
 # INTERFEJS GŁÓWNY (Sidebar)
