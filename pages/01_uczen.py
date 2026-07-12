@@ -4,7 +4,12 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime, timedelta
-
+#strażnik
+if "zalogowany_id" not in st.session_state:
+    st.switch_page("app.py")
+if st.session_state.get("role") != "uczen":
+    st.error("Nie masz uprawnień ucznia.")
+    st.stop()
 # =====================================================================
 # KONFIGURACJA FIRESTORE
 # =====================================================================
@@ -195,7 +200,8 @@ if "zalogowany_id" not in st.session_state:
         if dane:
             st.session_state.zalogowany_id = id_input
             st.session_state.user_api_key = dane.get("user_api_key", "")
-            
+            st.session_state.role = dane.get("rola", "uczen")
+
             surowe_postepy = dane.get("postep_tematow", {})
             st.session_state.postep_tematow = surowe_postepy 
             st.session_state.historia_czatow = dane.get("historia_czatow", {})
