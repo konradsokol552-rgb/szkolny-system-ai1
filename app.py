@@ -48,7 +48,7 @@ if st.button("Zaloguj"):
         st.error("Konto nie istnieje.")
 
 # TWORZENIE KONTA (ZWIJANE)
-with st.expander("➕ Utwórz nowe konto"):
+with st.expander("twożenie konta"):
     haslo_tworzenia = st.text_input("Hasło systemowe", type="password", key="new_sys_pass")
     typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel"])
     nowy_klucz_api = st.text_input("Klucz API Gemini", type="password", key="new_api_key")
