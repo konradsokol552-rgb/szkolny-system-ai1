@@ -153,9 +153,13 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst):
         
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={st.session_state.user_api_key}"
     
-    # Przygotowanie historii
+    # OPTYMALIZACJA KONTEKSTU:
+    # Wysyłamy tylko 10 ostatnich wiadomości (5 wymian), aby nie przekraczać limitów tokenów 
+    # i nie obciążać niepotrzebnie API historią sprzed godziny.
+    historia_do_wyslania = historia_rozmowy[-10:]
+    
     contents = []
-    for m in historia_rozmowy:
+    for m in historia_do_wyslania:
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
     
@@ -164,15 +168,18 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst):
         "systemInstruction": {"parts": [{"text": f"{SYSTEM_PROMPT}\n\nAKTUALNY TEMAT: {temat_kontekst}"}]}
     }
     
-    try:
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"❌ Błąd API ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"❌ Błąd połączenia: {str(e)}"
-
+    response = requests.post(url, json=payload)
+    
+    # OBSŁUGA BŁĘDÓW:
+    if response.status_code == 429:
+        # Wymuszenie ponowienia próby przez tenacity
+        raise Exception("Limit 429 przekroczony - ponawiam próbę...")
+        
+    if response.status_code == 200:
+        return response.json()['candidates'][0]['content']['parts'][0]['text']
+    else:
+        # Jeśli to inny błąd (np. 400 - zły request), nie chcemy go ponawiać
+        return f"❌ Błąd API ({response.status_code}): {response.text}"
 # =====================================================================
 # LOGOWANIE
 # =====================================================================
