@@ -237,58 +237,58 @@ with st.sidebar:
         key="glowny_wybor_tematu"
     )
     
-if st.button("Rozpocznij lekcję"):
-        st.session_state.aktualny_temat = wybor_tematu
-        
-        # 1. Wczytujemy profil z chmury
-        profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-        
-        if profil and isinstance(profil, dict):
-            # Wczytujemy teorie
-            st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
-            st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
+    if st.button("Rozpocznij lekcję"):
+            st.session_state.aktualny_temat = wybor_tematu
             
-            # Wczytujemy postępy (potrzebne do sprawdzenia licznika)
-            st.session_state.postep_tematow = profil.get("postep_tematow", {})
+            # 1. Wczytujemy profil z chmury
+            profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
             
-            # --- LOGIKA ODCZYTU LICZNIKA ---
-            stan_tematu = st.session_state.postep_tematow.get(wybor_tematu)
-            
-            # Jeśli stan_tematu to słownik (nowa struktura z licznikiem)
-            if isinstance(stan_tematu, dict):
-                st.session_state.licznik_zadan = stan_tematu.get("licznik", 0)
-            else:
-                # Jeśli to tylko string "W trakcie" lub "Nie rozpoczęte"
-                st.session_state.licznik_zadan = 0
-            # -------------------------------
-            
-            # Wczytujemy historię czatu
-            historia = profil.get("historia_czatow", {})
-            st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
-            
-        else:
-            # Fallback jeśli profil nie istnieje
-            st.session_state.teoria_lekcji = None
-            st.session_state.messages = []
-            st.session_state.licznik_zadan = 0
-            
-        # Jeśli historia jest pusta, generujemy lekcję
-        if not st.session_state.messages:
-            with st.spinner("Przygotowuję lekcję..."):
-                instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu)
+            if profil and isinstance(profil, dict):
+                # Wczytujemy teorie
+                st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
+                st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
                 
-                if "[TEORIA]" in odp and "[ZADANIE]" in odp:
-                    st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
-                    if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
-                    st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
-                    
-                    st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
-                    zapisz_profil_w_chmurze()
+                # Wczytujemy postępy (potrzebne do sprawdzenia licznika)
+                st.session_state.postep_tematow = profil.get("postep_tematow", {})
+                
+                # --- LOGIKA ODCZYTU LICZNIKA ---
+                stan_tematu = st.session_state.postep_tematow.get(wybor_tematu)
+                
+                # Jeśli stan_tematu to słownik (nowa struktura z licznikiem)
+                if isinstance(stan_tematu, dict):
+                    st.session_state.licznik_zadan = stan_tematu.get("licznik", 0)
                 else:
-                    st.session_state.teoria_lekcji = odp
-        
-        st.rerun()
+                    # Jeśli to tylko string "W trakcie" lub "Nie rozpoczęte"
+                    st.session_state.licznik_zadan = 0
+                # -------------------------------
+                
+                # Wczytujemy historię czatu
+                historia = profil.get("historia_czatow", {})
+                st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+                
+            else:
+                # Fallback jeśli profil nie istnieje
+                st.session_state.teoria_lekcji = None
+                st.session_state.messages = []
+                st.session_state.licznik_zadan = 0
+                
+            # Jeśli historia jest pusta, generujemy lekcję
+            if not st.session_state.messages:
+                with st.spinner("Przygotowuję lekcję..."):
+                    instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
+                    odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu)
+                    
+                    if "[TEORIA]" in odp and "[ZADANIE]" in odp:
+                        st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
+                        if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
+                        st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
+                        zapisz_profil_w_chmurze()
+                    else:
+                        st.session_state.teoria_lekcji = odp
+            
+            st.rerun()
 
 # =====================================================================
 # EKRAN GŁÓWNY
