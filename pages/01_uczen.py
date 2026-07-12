@@ -5,6 +5,13 @@ from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
 
+# --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
+st.markdown("""
+    <style>
+        [data-testid="stSidebarNav"] {display: none !important;}
+    </style>
+""", unsafe_allow_html=True)
+
 # --- STRAŻNIK ---
 if "zalogowany_id" not in st.session_state:
     st.switch_page("app.py")
@@ -17,15 +24,7 @@ if st.session_state.get("role") != "uczen":
 # =====================================================================
 def init_firestore():
     try:
-        if "connections" not in st.secrets:
-            st.error("❌ BŁĄD: Brak sekcji [connections] w pliku secrets.toml!")
-            return None
-        
         key_dict = st.secrets["connections"]["firestore"]
-        if not key_dict:
-            st.error("❌ BŁĄD: Sekcja [connections.firestore] jest pusta!")
-            return None
-            
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict["project_id"])
     except Exception as e:
@@ -51,7 +50,6 @@ def wczytaj_profil_z_chmury(identyfikator):
     doc = db.collection("postepy_uczniow").document(identyfikator).get()
     return doc.to_dict() if doc.exists else None
 
-# Odchudzona funkcja zapisu - obsługuje wszystko na raz
 def zapisz_profil_w_chmurze():
     if "zalogowany_id" in st.session_state:
         postepy = st.session_state.get("postep_tematow", {})
@@ -107,7 +105,6 @@ PĘTLA LOGICZNA TEMATU:
    - Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego, napisz "Odłóżmy to zadanie na koniec", przesuń zadanie na koniec kolejki i daj nowe.
 """
 
-# ZMIANA: Dodano "licznik_zadan" do argumentów
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     if not st.session_state.get("user_api_key"):
         return "❌ BŁĄD: Brak klucza API w profilu!"
@@ -121,7 +118,7 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
     
-    # KOTWICA KONTEKSTOWA: Przypominamy AI na jakim jest etapie
+    # KOTWICA KONTEKSTOWA
     dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
         dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie."
@@ -150,6 +147,10 @@ if "struktura_dydaktyczna" not in st.session_state:
     st.session_state.struktura_dydaktyczna = pobierz_strukture()
 
 with st.sidebar:
+    if st.button("Wyloguj"):
+        st.session_state.clear()
+        st.switch_page("app.py")
+
     st.header("🏫 Dziennik Ucznia")
     wybrany_przedmiot = st.selectbox("Wybierz przedmiot:", list(st.session_state.struktura_dydaktyczna.keys()))
     dostepne = st.session_state.struktura_dydaktyczna.get(wybrany_przedmiot, [])
@@ -199,7 +200,6 @@ with st.sidebar:
         if not st.session_state.messages:
             with st.spinner("Przygotowuję lekcję..."):
                 instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                # Podajemy licznik = 0
                 odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
                 
                 if "[TEORIA]" in odp and "[ZADANIE]" in odp:
@@ -273,7 +273,6 @@ else:
             st.session_state.messages.append({"role": "user", "content": prompt})
             
             with st.spinner("Myślę..."):
-                # Przekazujemy licznik zadan do funkcji AI!
                 obecny_licznik = st.session_state.get("licznik_zadan", 0)
                 odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
                 
@@ -283,7 +282,8 @@ else:
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
                     
-                    st.session_state.messages.append({"role": "assistant", "content": odp.replace("[ZALICZONE]", "").strip()})
+                    czysta_odp = odp.replace("[ZALICZONE]", "").strip()
+                    st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
                     
                     if not isinstance(st.session_state.get("historia_czatow"), dict):
                         st.session_state.historia_czatow = {}
