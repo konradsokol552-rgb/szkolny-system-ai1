@@ -309,29 +309,39 @@ else:
             st.session_state.messages.append({"role": "user", "content": prompt})
             
             with st.spinner("Myślę..."):
-                obecny_licznik = st.session_state.get("licznik_zadan", 0)
-                odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
-                
-                if odp.startswith("❌"):
-                    st.error(f"AI zwróciło błąd: {odp}")
-                else:
-                    if "[ZALICZONE]" in odp:
-                        st.session_state.licznik_zadan = obecny_licznik + 1
-                        
-                        if st.session_state.licznik_zadan >= 8:
-        st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
-            "status": "ZALICZONY",
-            "data": datetime.now().strftime("%Y-%m-%d"),
-            "licznik": st.session_state.licznik_zadan
-        }
-        st.success("🎉 Gratulacje! Temat został zaliczony.")
-                    
-                    czysta_odp = odp.replace("[ZALICZONE]", "").strip()
-                    st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
-                    
-                    if not isinstance(st.session_state.get("historia_czatow"), dict):
-                        st.session_state.historia_czatow = {}
-                    st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
-                    
-                    zapisz_profil_w_chmurze()
-                    st.rerun()
+    obecny_licznik = st.session_state.get("licznik_zadan", 0)
+    odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
+    
+    if odp.startswith("❌"):
+        st.error(f"AI zwróciło błąd: {odp}")
+    else:
+        # Obsługa zaliczenia zadania
+        if "[ZALICZONE]" in odp:
+            st.session_state.licznik_zadan = obecny_licznik + 1
+            
+            # Sprawdzenie warunku końcowego (8 zadań)
+            if st.session_state.licznik_zadan >= 8:
+                st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                    "status": "ZALICZONY",
+                    "data": datetime.now().strftime("%Y-%m-%d"),
+                    "licznik": st.session_state.licznik_zadan
+                }
+                st.success("🎉 Gratulacje! Temat został zaliczony.")
+        
+        # Obsługa sprawdzianu (jeśli AI ogłosi zaliczenie sprawdzianu)
+        elif "GRATULACJE! Temat ZALICZONY" in odp:
+             st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                "status": "ZALICZONY",
+                "data": datetime.now().strftime("%Y-%m-%d"),
+                "licznik": st.session_state.licznik_zadan
+            }
+        
+        czysta_odp = odp.replace("[ZALICZONE]", "").strip()
+        st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
+        
+        if not isinstance(st.session_state.get("historia_czatow"), dict):
+            st.session_state.historia_czatow = {}
+        st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
+        
+        zapisz_profil_w_chmurze()
+        st.rerun()
