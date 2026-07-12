@@ -102,7 +102,7 @@ LISTA KOMEND:
 - /sprawdzian: Natychmiastowe przejście do FAZY TESTU KOŃCOWEGO.
 - ocena: Aktywacja FAZY OCENIANIA.
 - od nowa: Restart sesji.
-- koniec tematu: oznacza temat jako zaliczny
+- kt: oznacza temat jako zaliczny pomijajac faze sprawdzianu.
 
 PĘTLA LOGICZNA TEMATU:
 
