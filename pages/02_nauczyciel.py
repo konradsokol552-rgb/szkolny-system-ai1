@@ -56,7 +56,7 @@ for u in uczniowie:
             st.write("Brak rozpoczętych tematów.")
             
         st.markdown("---")
-        if st.button(f"Zresetuj dane ucznia {u.id}(nie będzie można tego cofnąć)", key=f"reset_{u.id}"):
+        if st.button(f"Zresetuj dane ucznia {u.id}", key=f"reset_{u.id}"):
             db.collection("postepy_uczniow").document(u.id).update({
                 "postep_tematow": {},
                 "historia_czatow": {},
