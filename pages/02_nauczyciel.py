@@ -4,10 +4,16 @@ from google.cloud import firestore
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
-# --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
+# --- KONFIGURACJA CSS ---
 st.markdown("""
     <style>
         [data-testid="stSidebarNav"] {display: none !important;}
+        
+        /* CSS hack: Znajduje przycisk w sidebarze, który wewnątrz zawiera tekst "POMOC!" */
+        div[data-testid="stSidebar"] button:has(div:contains("POMOC!")) {
+            background-color: #FF4B4B !important;
+            color: white !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -18,8 +24,8 @@ if st.session_state.get("role") != "nauczyciel":
     st.error("Brak dostępu! Tylko dla nauczycieli.")
     st.stop()
 
-# Ustawienie automatycznego odświeżania co 5 sekund
-count = st_autorefresh(interval=5000, limit=None, key="nauczyciel_refresh")
+# Ustawienie automatycznego odświeżania co 10 sekund
+count = st_autorefresh(interval=10000, limit=None, key="nauczyciel_refresh")
 
 # --- PANEL NAUCZYCIELA ---
 def init_firestore():
@@ -48,13 +54,14 @@ with st.sidebar:
         dane = u.to_dict()
         potrzebuje_pomocy = dane.get("potrzebuje_pomocy", False)
         
-        # Wybór etykiety przycisku (z emoji dla uwagi)
+        # Etykieta przycisku
         if potrzebuje_pomocy:
             label = f"🚨 {u.id} (POMOC!)"
         else:
             label = f"👤 {u.id}"
             
         # Przycisk w sidebarze
+        # Dzięki CSS powyżej, jeśli label zawiera "POMOC!", przycisk będzie czerwony!
         if st.button(label, key=f"btn_{u.id}", use_container_width=True):
             st.session_state.wybrany_uczen_id = u.id
             st.rerun()
@@ -62,7 +69,7 @@ with st.sidebar:
 # --- GŁÓWNY OBSZAR ---
 st.title("Panel Nauczyciela")
 
-# Zarządzanie czasem (zawsze widoczne na górze)
+# Zarządzanie czasem
 status_lekcji = db.collection("ustawienia_lekcji").document("globalna").get()
 if status_lekcji.exists:
     dane_lekcji = status_lekcji.to_dict()
@@ -81,7 +88,7 @@ if st.button("Aktywuj lekcję na 1 godzinę"):
 
 st.markdown("---")
 
-# --- WYŚWIETLANIE SZCZEGÓŁÓW WYBRANEGO UCZNIA ---
+# --- WYŚWIETLANIE SZCZEGÓŁÓW ---
 if "wybrany_uczen_id" in st.session_state:
     uczen_id = st.session_state.wybrany_uczen_id
     doc_ref = db.collection("postepy_uczniow").document(uczen_id)
