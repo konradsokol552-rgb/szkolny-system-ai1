@@ -4,30 +4,17 @@ from google.cloud import firestore
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
-# --- KONFIGURACJA CSS ---
-st.markdown("""
-    <style>
-        [data-testid="stSidebarNav"] {display: none !important;}
-        
-        /* CSS hack: Znajduje przycisk w sidebarze, który wewnątrz zawiera tekst "POMOC!" */
-        div[data-testid="stSidebar"] button:has(div:contains("POMOC!")) {
-            background-color: #FF4B4B !important;
-            color: white !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+# --- UKRYCIE DOMYŚLNEGO MENU ---
+st.markdown("""<style>[data-testid="stSidebarNav"] {display: none !important;}</style>""", unsafe_allow_html=True)
 
 # --- STRAŻNIK ---
-if "zalogowany_id" not in st.session_state:
-    st.switch_page("app.py")
-if st.session_state.get("role") != "nauczyciel":
-    st.error("Brak dostępu! Tylko dla nauczycieli.")
-    st.stop()
+if "zalogowany_id" not in st.session_state: st.switch_page("app.py")
+if st.session_state.get("role") != "nauczyciel": st.stop()
 
-# Ustawienie automatycznego odświeżania co 10 sekund
-count = st_autorefresh(interval=10000, limit=None, key="nauczyciel_refresh")
+# Auto-refresh
+st_autorefresh(interval=5000, limit=None, key="nauczyciel_refresh")
 
-# --- PANEL NAUCZYCIELA ---
+# --- FIRESTORE ---
 def init_firestore():
     key_dict = st.secrets["connections"]["firestore"]
     creds = service_account.Credentials.from_service_account_info(key_dict)
@@ -35,34 +22,32 @@ def init_firestore():
 
 db = init_firestore()
 
-# --- PANEL BOCZNY (NAWIGACJA UCZNIÓW) ---
+# --- PANEL BOCZNY ---
 with st.sidebar:
-    st.title("👨‍🏫 Nauczyciel")
-    st.write(f"Zalogowano: **{st.session_state.zalogowany_id}**")
-    
-    if st.button("Wyloguj"):
-        st.session_state.clear()
-        st.switch_page("app.py")
-    
+    st.title("👨‍🏫 Panel Nauczyciela")
+    if st.button("Wyloguj"): st.session_state.clear(); st.switch_page("app.py")
     st.markdown("---")
-    st.subheader("Lista uczniów")
     
-    # Pobieramy wszystkich uczniów
+    # Pobieramy uczniów
     uczniowie = list(db.collection("postepy_uczniow").where("rola", "==", "uczen").stream())
     
-    for u in uczniowie:
-        dane = u.to_dict()
-        potrzebuje_pomocy = dane.get("potrzebuje_pomocy", False)
-        
-        # Etykieta przycisku
-        if potrzebuje_pomocy:
-            label = f"🚨 {u.id} (POMOC!)"
-        else:
-            label = f"👤 {u.id}"
-            
-        # Przycisk w sidebarze
-        # Dzięki CSS powyżej, jeśli label zawiera "POMOC!", przycisk będzie czerwony!
-        if st.button(label, key=f"btn_{u.id}", use_container_width=True):
+    # Podział na listę z prośbami o pomoc i resztę
+    lista_potrzebujacych = [u for u in uczniowie if u.to_dict().get("potrzebuje_pomocy")]
+    lista_reszta = [u for u in uczniowie if not u.to_dict().get("potrzebuje_pomocy")]
+    
+    # 1. SEKCJA ALARMOWA (Czerwona)
+    if lista_potrzebujacych:
+        st.error("🚨 POTRZEBUJĄ POMOCY:")
+        for u in lista_potrzebujacych:
+            if st.button(f"POMOC: {u.id}", key=f"btn_pomoc_{u.id}", use_container_width=True):
+                st.session_state.wybrany_uczen_id = u.id
+                st.rerun()
+        st.markdown("---")
+    
+    # 2. SEKCJA POZOSTAŁYCH
+    st.subheader("Wszyscy uczniowie")
+    for u in lista_reszta:
+        if st.button(f"👤 {u.id}", key=f"btn_{u.id}", use_container_width=True):
             st.session_state.wybrany_uczen_id = u.id
             st.rerun()
 
