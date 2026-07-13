@@ -4,6 +4,7 @@ from google.cloud import firestore
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
 
+
 # --- KONFIGURACJA CSS ---
 st.markdown("""
     <style>
@@ -82,7 +83,7 @@ if status_lekcji.exists:
             st.error("🔴 Czas lekcji minął.")
 
 if st.button("Aktywuj lekcję na 1 godzinę"):
-    nowa_blokada = datetime.now() + timedelta(hours=-1)
+    nowa_blokada = datetime.now() + timedelta(hours=1)
     db.collection("ustawienia_lekcji").document("globalna").set({"godzina_blokady": nowa_blokada.strftime("%Y-%m-%d %H:%M:%S")})
     st.rerun()
 
