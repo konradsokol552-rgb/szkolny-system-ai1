@@ -1,6 +1,7 @@
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
+from datetime import datetime, timedelta
 
 # --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
 st.markdown("""
@@ -33,6 +34,30 @@ with st.sidebar:
 st.title("👨‍🏫 Panel Nauczyciela")
 st.write(f"Zalogowano jako: **{st.session_state.zalogowany_id}**")
 
+# --- SEKCJA AKTYWACJI CZASOWEJ LEKCJI ---
+st.header("⏱️ Zarządzanie Czasem Lekcji")
+status_lekcji = db.collection("ustawienia_lekcji").document("globalna").get()
+
+if status_lekcji.exists:
+    dane_lekcji = status_lekcji.to_dict()
+    godzina_blokady_str = dane_lekcji.get("godzina_blokady")
+    if godzina_blokady_str:
+        godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() < godzina_blokady:
+            st.success(f"🟢 Lekcja jest AKTYWNA do godziny: {godzina_blokady.strftime('%H:%M:%S')}")
+        else:
+            st.error("🔴 Czas lekcji minął. Aplikacje uczniów są zablokowane.")
+else:
+    st.warning("Lekcja nie została jeszcze aktywowana.")
+
+if st.button("Aktywuj lekcję na 1 godzinę", use_container_width=True):
+    nowa_blokada = datetime.now() + timedelta(hours=1)
+    nowa_blokada_str = nowa_blokada.strftime("%Y-%m-%d %H:%M:%S")
+    db.collection("ustawienia_lekcji").document("globalna").set({"godzina_blokady": nowa_blokada_str})
+    st.success(f"Pomyślnie aktywowano lekcję! Blokada nastąpi o: {nowa_blokada_str}")
+    st.rerun()
+
+st.markdown("---")
 st.header("Lista uczniów i ich postępy")
 
 # Wyciągamy wszystkich uczniów z bazy
@@ -40,7 +65,17 @@ uczniowie = db.collection("postepy_uczniow").where("rola", "==", "uczen").stream
 
 for u in uczniowie:
     dane = u.to_dict()
-    with st.expander(f"Uczeń: {u.id}"):
+    potrzebuje_pomocy = dane.get("potrzebuje_pomocy", False)
+    temat_problemu = dane.get("aktualny_temat_problemu", "Brak")
+    
+    # Zmiana etykiety i wyświetlenie czerwonego powiadomienia, jeśli uczeń wezwał pomoc
+    if potrzebuje_pomocy:
+        st.error(f"🚨 UCZEŃ POTRZEBUJE POMOCY: **{u.id}** (Utknął na: {temat_problemu})")
+        etykieta_ucznia = f"🚨 [POMOC] Uczeń: {u.id}"
+    else:
+        etykieta_ucznia = f"Uczeń: {u.id}"
+        
+    with st.expander(etykieta_ucznia):
         postepy = dane.get('postep_tematow', {})
         if postepy:
             for temat, stan in postepy.items():
@@ -60,7 +95,9 @@ for u in uczniowie:
             db.collection("postepy_uczniow").document(u.id).update({
                 "postep_tematow": {},
                 "historia_czatow": {},
-                "teorie_lekcji": {}
+                "teorie_lekcji": {},
+                "potrzebuje_pomocy": False,
+                "aktualny_temat_problemu": ""
             })
             st.success(f"Zresetowano postępy dla ucznia {u.id}!")
             st.rerun()

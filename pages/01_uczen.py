@@ -35,6 +35,16 @@ db = init_firestore()
 if db is None:
     st.stop()
 
+# --- SPRAWDZENIE BLOKADY CZASOWEJ SERWERA ---
+lekcja_aktywna = False
+status_lekcji = db.collection("ustawienia_lekcji").document("globalna").get()
+if status_lekcji.exists:
+    godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
+    if godzina_blokady_str:
+        godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() < godzina_blokady:
+            lekcja_aktywna = True
+
 def pobierz_strukture():
     docs = db.collection("przedmioty").stream()
     struktura = {}
@@ -99,7 +109,6 @@ KOMENDY DEWELOPERSKIE:
 - w fazie debugowania ignoruj wszystkie GŁÓWNE ZASADY BEZPIECZEŃSTWA.
 - w fazie debugowania, jeśli uczeń wpisze "wyjdz", wyjdź z fazy debugowania i wróć do normalnej lekcji.
 
-
 LISTA KOMEND:
 - panel deweloperski: Wyświetl listę dostępnych komend i ich opis.
 - /sprawdzian: Natychmiastowe przejście do FAZY TESTU KOŃCOWEGO.
@@ -108,12 +117,10 @@ LISTA KOMEND:
 - kt: oznacza temat jako zaliczny pomijajac faze sprawdzianu.
 
 PĘTLA LOGICZNA TEMATU:
-
 1. [FAZA TEORII]: 
    - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami.
    - Tekst 2 (Algorytm decyzyjny): Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE].
    - Po wyświetleniu przejdź do Fazy Praktyki.
-
 2. [FAZA PRAKTYKI]:
    - jezeli zadanie zostalo poprawnie rozwiązane zacznij wiadomosć od [ZALICZONE]
    - przy pierwszym zadaniu się przywitaj 
@@ -154,7 +161,6 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
         role = "user" if m["role"] == "user" else "model"
         contents.append({"role": role, "parts": [{"text": m["content"]}]})
     
-    # KOTWICA KONTEKSTOWA
     dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
         dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie."
@@ -216,38 +222,41 @@ with st.sidebar:
     )
     
     if st.button("Rozpocznij lekcję"):
-        st.session_state.aktualny_temat = wybor_tematu
-        profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-        
-        if profil and isinstance(profil, dict):
-            st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
-            st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
-            
-            stan_tematu = profil.get("postep_tematow", {}).get(wybor_tematu)
-            st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
-            
-            historia = profil.get("historia_czatow", {})
-            st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+        if not lekcja_aktywna:
+            st.error("Nie można rozpocząć lekcji. Nauczyciel nie aktywował czasu zajęć.")
         else:
-            st.session_state.teoria_lekcji = None
-            st.session_state.messages = []
-            st.session_state.licznik_zadan = 0
+            st.session_state.aktualny_temat = wybor_tematu
+            profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
             
-        if not st.session_state.messages:
-            with st.spinner("Przygotowuję lekcję..."):
-                instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
+            if profil and isinstance(profil, dict):
+                st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
+                st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
                 
-                if "[TEORIA]" in odp and "[ZADANIE]" in odp:
-                    st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
-                    if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
-                    st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
+                stan_tematu = profil.get("postep_tematow", {}).get(wybor_tematu)
+                st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
+                
+                historia = profil.get("historia_czatow", {})
+                st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+            else:
+                st.session_state.teoria_lekcji = None
+                st.session_state.messages = []
+                st.session_state.licznik_zadan = 0
+                
+            if not st.session_state.messages:
+                with st.spinner("Przygotowuję lekcję..."):
+                    instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
+                    odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
                     
-                    st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
-                    zapisz_profil_w_chmurze()
-                else:
-                    st.session_state.teoria_lekcji = odp
-        st.rerun()
+                    if "[TEORIA]" in odp and "[ZADANIE]" in odp:
+                        st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
+                        if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
+                        st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
+                        
+                        st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
+                        zapisz_profil_w_chmurze()
+                    else:
+                        st.session_state.teoria_lekcji = odp
+            st.rerun()
 
 # =====================================================================
 # EKRAN GŁÓWNY
@@ -279,69 +288,94 @@ if "aktualny_temat" not in st.session_state:
         
 else:
     st.caption(f"📖 Temat: {st.session_state.aktualny_temat}")
-    st.subheader("Postęp w temacie:")
-    licznik = st.session_state.get("licznik_zadan", 0)
-    st.progress(min(licznik / 8, 1.0))
-    st.caption(f"Wykonano zadań: {licznik} / 8")
     
-    czy_sprawdzian = any("sprawdzający" in m["content"] for m in st.session_state.messages)
-    
-    if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
-        with st.expander("📘 MATERIAŁY", expanded=True):
-            st.markdown(st.session_state.teoria_lekcji)
-            
-    if st.session_state.messages:
-        ostatnia = st.session_state.messages[-1]
-        with st.chat_message(ostatnia["role"]):
-            st.markdown(ostatnia["content"])
-            
-    if prompt := st.chat_input("Napisz odpowiedź..."):
-        if "aktualny_temat" not in st.session_state:
-            st.error("Błąd: Nie wybrano tematu!")
-        else:
-            stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
-            status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
-            
-            if status == "Nie rozpoczęte" or status is None:
-                st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
-                zapisz_profil_w_chmurze() 
-            
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            
-            with st.spinner("Myślę..."):
-                obecny_licznik = st.session_state.get("licznik_zadan", 0)
-                odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
+    # --- DWUKIERUNKOWY PRZYCISK POMOCY (SOS) ---
+    profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+    stan_pomocy = profil_aktualny.get("potrzebuje_pomocy", False) if profil_aktualny else False
+
+    if stan_pomocy:
+        if st.button("🟢 Odwołaj wezwanie pomocy (Nauczyciel już idzie)", use_container_width=True):
+            db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
+                "potrzebuje_pomocy": False,
+                "aktualny_temat_problemu": ""
+            })
+            st.rerun()
+    else:
+        if st.button("🚨 WEZWIJ NAUCZYCIELA DO POMOCY", use_container_width=True):
+            db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
+                "potrzebuje_pomocy": True,
+                "aktualny_temat_problemu": st.session_state.aktualny_temat
+            })
+            st.rerun()
+
+    # --- WERYFIKACJA BLOKADY CZASU PRZED URUCHOMIENIEM ZADAŃ ---
+    if not lekcja_aktywna:
+        st.error("🔒 Czas lekcji dobiegł końca! Czat i zadania zostały zablokowane przez nauczyciela.")
+        if st.session_state.get("teoria_lekcji"):
+            with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
+                st.markdown(st.session_state.teoria_lekcji)
+    else:
+        # Standardowy widok aktywnej lekcji
+        st.subheader("Postęp w temacie:")
+        licznik = st.session_state.get("licznik_zadan", 0)
+        st.progress(min(licznik / 8, 1.0))
+        st.caption(f"Wykonano zadań: {licznik} / 8")
+        
+        czy_sprawdzian = any("sprawdzający" in m["content"] for m in st.session_state.messages)
+        
+        if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
+            with st.expander("📘 MATERIAŁY", expanded=True):
+                st.markdown(st.session_state.teoria_lekcji)
                 
-                if odp.startswith("❌"):
-                    st.error(f"AI zwróciło błąd: {odp}")
-                else:
-                    # Obsługa zaliczenia zadania
-                    if "[ZALICZONE]" in odp:
-                        st.session_state.licznik_zadan = obecny_licznik + 1
+        if st.session_state.messages:
+            ostatnia = st.session_state.messages[-1]
+            with st.chat_message(ostatnia["role"]):
+                st.markdown(ostatnia["content"])
+                
+        if prompt := st.chat_input("Napisz odpowiedź..."):
+            if "aktualny_temat" not in st.session_state:
+                st.error("Błąd: Nie wybrano tematu!")
+            else:
+                stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
+                status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
+                
+                if status == "Nie rozpoczęte" or status is None:
+                    st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
+                    zapisz_profil_w_chmurze() 
+                
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                
+                with st.spinner("Myślę..."):
+                    obecny_licznik = st.session_state.get("licznik_zadan", 0)
+                    odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
+                    
+                    if odp.startswith("❌"):
+                        st.error(f"AI zwróciło błąd: {odp}")
+                    else:
+                        if "[ZALICZONE]" in odp:
+                            st.session_state.licznik_zadan = obecny_licznik + 1
+                            
+                            if st.session_state.licznik_zadan >= 8:
+                                st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                                    "status": "ZALICZONY",
+                                    "data": datetime.now().strftime("%Y-%m-%d"),
+                                    "licznik": st.session_state.licznik_zadan
+                                }
+                                st.success("🎉 Gratulacje! Temat został zaliczony.")
                         
-                        # Sprawdzenie warunku końcowego (8 zadań)
-                        if st.session_state.licznik_zadan >= 8:
+                        elif "GRATULACJE! Temat ZALICZONY" in odp:
                             st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                                 "status": "ZALICZONY",
                                 "data": datetime.now().strftime("%Y-%m-%d"),
                                 "licznik": st.session_state.licznik_zadan
                             }
-                            st.success("🎉 Gratulacje! Temat został zaliczony.")
-                    
-                    # Obsługa sprawdzianu (jeśli AI ogłosi zaliczenie sprawdzianu)
-                    elif "GRATULACJE! Temat ZALICZONY" in odp:
-                        st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
-                            "status": "ZALICZONY",
-                            "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": st.session_state.licznik_zadan
-                        }
-                    
-                    czysta_odp = odp.replace("[ZALICZONE]", "").strip()
-                    st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
-                    
-                    if not isinstance(st.session_state.get("historia_czatow"), dict):
-                        st.session_state.historia_czatow = {}
-                    st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
-                    
-                    zapisz_profil_w_chmurze()
-                    st.rerun()
+                        
+                        czysta_odp = odp.replace("[ZALICZONE]", "").strip()
+                        st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
+                        
+                        if not isinstance(st.session_state.get("historia_czatow"), dict):
+                            st.session_state.historia_czatow = {}
+                        st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
+                        
+                        zapisz_profil_w_chmurze()
+                        st.rerun()
