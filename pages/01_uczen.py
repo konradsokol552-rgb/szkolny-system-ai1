@@ -118,7 +118,7 @@ LISTA KOMEND:
 
 PĘTLA LOGICZNA TEMATU:
 1. [FAZA TEORII]: 
-   - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami.
+   - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami postaraj sie tu zawrzeć całą potrzebną wiedzę do zrozumienia tematu przez ucznia.
    - Tekst 2 (Algorytm decyzyjny): Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE].
    - Po wyświetleniu przejdź do Fazy Praktyki.
 2. [FAZA PRAKTYKI]:
