@@ -24,7 +24,7 @@ if st.session_state.get("role") != "nauczyciel":
     st.error("Brak dostępu! Tylko dla nauczycieli.")
     st.stop()
 
-# Ustawienie automatycznego odświeżania co 10 sekund
+# Ustawienie automatycznego odświeżania co 5 sekund
 count = st_autorefresh(interval=5000, limit=None, key="nauczyciel_refresh")
 
 # --- PANEL NAUCZYCIELA ---
@@ -82,7 +82,7 @@ if status_lekcji.exists:
             st.error("🔴 Czas lekcji minął.")
 
 if st.button("Aktywuj lekcję na 1 godzinę"):
-    nowa_blokada = datetime.now() + timedelta(hours=1)
+    nowa_blokada = datetime.now() + timedelta(hours=-1)
     db.collection("ustawienia_lekcji").document("globalna").set({"godzina_blokady": nowa_blokada.strftime("%Y-%m-%d %H:%M:%S")})
     st.rerun()
 
