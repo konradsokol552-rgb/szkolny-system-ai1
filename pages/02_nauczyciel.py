@@ -3,18 +3,15 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 from datetime import datetime, timedelta
 from streamlit_autorefresh import st_autorefresh
+from zoneinfo import ZoneInfo
 
+# Definicja strefy czasowej (musi być tutaj!)
+STREFA_PL = ZoneInfo("Europe/Warsaw")
 
 # --- KONFIGURACJA CSS ---
 st.markdown("""
     <style>
         [data-testid="stSidebarNav"] {display: none !important;}
-        
-        /* CSS hack: Znajduje przycisk w sidebarze, który wewnątrz zawiera tekst "POMOC!" */
-        div[data-testid="stSidebar"] button:has(div:contains("POMOC!")) {
-            background-color: #FF4B4B !important;
-            color: white !important;
-        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -48,7 +45,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Lista uczniów")
     
-    # Pobieramy wszystkich uczniów
     uczniowie = list(db.collection("postepy_uczniow").where("rola", "==", "uczen").stream())
     
     for u in uczniowie:
@@ -61,8 +57,6 @@ with st.sidebar:
         else:
             label = f"👤 {u.id}"
             
-        # Przycisk w sidebarze
-        # Dzięki CSS powyżej, jeśli label zawiera "POMOC!", przycisk będzie czerwony!
         if st.button(label, key=f"btn_{u.id}", use_container_width=True):
             st.session_state.wybrany_uczen_id = u.id
             st.rerun()
@@ -70,21 +64,28 @@ with st.sidebar:
 # --- GŁÓWNY OBSZAR ---
 st.title("Panel Nauczyciela")
 
-# Zarządzanie czasem
+# --- ZARZĄDZANIE CZASEM ---
 status_lekcji = db.collection("ustawienia_lekcji").document("globalna").get()
 if status_lekcji.exists:
     dane_lekcji = status_lekcji.to_dict()
     godzina_blokady_str = dane_lekcji.get("godzina_blokady")
+    
     if godzina_blokady_str:
-        godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S")
-        if datetime.now() < godzina_blokady:
+        # Parsujemy i przypisujemy strefę
+        godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
+        teraz = datetime.now(STREFA_PL)
+        
+        if teraz < godzina_blokady:
             st.success(f"🟢 Lekcja AKTYWNA do: {godzina_blokady.strftime('%H:%M:%S')}")
         else:
             st.error("🔴 Czas lekcji minął.")
 
+# --- PRZYCISK AKTYWACJI ---
 if st.button("Aktywuj lekcję na 1 godzinę"):
-    nowa_blokada = datetime.now() + timedelta(hours=1)
-    db.collection("ustawienia_lekcji").document("globalna").set({"godzina_blokady": nowa_blokada.strftime("%Y-%m-%d %H:%M:%S")})
+    nowa_blokada = datetime.now(STREFA_PL) + timedelta(hours=1)
+    db.collection("ustawienia_lekcji").document("globalna").set({
+        "godzina_blokady": nowa_blokada.strftime("%Y-%m-%d %H:%M:%S")
+    })
     st.rerun()
 
 st.markdown("---")
