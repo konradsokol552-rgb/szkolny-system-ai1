@@ -294,7 +294,7 @@ else:
     stan_pomocy = profil_aktualny.get("potrzebuje_pomocy", False) if profil_aktualny else False
 
     if stan_pomocy:
-        if st.button("🟢 Odwołaj wezwanie pomocy (Nauczyciel już idzie)", use_container_width=True):
+        if st.button("Anuluj wezwanie", use_container_width=True):
             db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": False,
                 "aktualny_temat_problemu": ""
