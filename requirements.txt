@@ -2,3 +2,4 @@ streamlit
 google-cloud-firestore
 pandas
 requests
+streamlit-autorefresh
