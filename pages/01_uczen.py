@@ -119,7 +119,7 @@ LISTA KOMEND:
 PĘTLA LOGICZNA TEMATU:
 1. [FAZA TEORII]: 
    - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami zrub to w sposub szczegułowy zawierając wystkie informacje z danego tematu.
-   - Tekst 2 (Algorytm decyzyjny): Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE].
+   - Tekst 2 (Algorytm decyzyjny): Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE](krok i akcja tak i akcja nie są pisane od nowej linijki).
    - Po wyświetleniu przejdź do Fazy Praktyki.
 2. [FAZA PRAKTYKI]:
    - jezeli zadanie zostalo poprawnie rozwiązane zacznij wiadomosć od [ZALICZONE]
