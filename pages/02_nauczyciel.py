@@ -2,6 +2,7 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 from datetime import datetime, timedelta
+import streamlit-autorefresh
 
 # --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
 st.markdown("""
@@ -16,6 +17,8 @@ if "zalogowany_id" not in st.session_state:
 if st.session_state.get("role") != "nauczyciel":
     st.error("Brak dostępu! Tylko dla nauczycieli.")
     st.stop()
+
+count = st_autorefresh(interval=3000, limit=None, key="nauczyciel_refresh")
 
 # --- PANEL NAUCZYCIELA ---
 def init_firestore():
