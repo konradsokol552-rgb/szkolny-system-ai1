@@ -2,7 +2,6 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 from datetime import datetime, timedelta
-from streamlit_autorefresh import st_autorefresh
 from zoneinfo import ZoneInfo
 
 # Definicja strefy czasowej (musi być tutaj!)
@@ -22,9 +21,6 @@ if st.session_state.get("role") != "nauczyciel":
     st.error("Brak dostępu! Tylko dla nauczycieli.")
     st.stop()
 
-# Ustawienie automatycznego odświeżania co 5 sekund
-count = st_autorefresh(interval=5000, limit=None, key="nauczyciel_refresh")
-
 # --- PANEL NAUCZYCIELA ---
 def init_firestore():
     key_dict = st.secrets["connections"]["firestore"]
@@ -34,9 +30,10 @@ def init_firestore():
 db = init_firestore()
 
 # --- PANEL BOCZNY (NAWIGACJA UCZNIÓW) ---
-with st.sidebar:
+@st.fragment(run_every=3) # Odświeża tylko ten kawałek co 3 sekundy
+def render_sidebar():
     st.title("👨‍🏫 Nauczyciel")
-    st.write(f"Zalogowano: **{st.session_state.zalogowany_id}**")
+    st.write(f"Zalogowano: **{st.session_state.get('zalogowany_id', 'Brak')}**")
     
     if st.button("Wyloguj"):
         st.session_state.clear()
@@ -45,13 +42,13 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Lista uczniów")
     
+    # Pobieramy dane wewnątrz fragmentu, żeby widzieć zmiany na żywo
     uczniowie = list(db.collection("postepy_uczniow").where("rola", "==", "uczen").stream())
     
     for u in uczniowie:
         dane = u.to_dict()
         potrzebuje_pomocy = dane.get("potrzebuje_pomocy", False)
         
-        # Etykieta przycisku
         if potrzebuje_pomocy:
             label = f"🚨 {u.id} (POMOC!)"
         else:
@@ -59,7 +56,10 @@ with st.sidebar:
             
         if st.button(label, key=f"btn_{u.id}", use_container_width=True):
             st.session_state.wybrany_uczen_id = u.id
-            st.rerun()
+            st.rerun() # Przeładuje całą stronę tylko po kliknięciu wyboru ucznia
+
+with st.sidebar:
+    render_sidebar()
 
 # --- GŁÓWNY OBSZAR ---
 st.title("Panel Nauczyciela")
