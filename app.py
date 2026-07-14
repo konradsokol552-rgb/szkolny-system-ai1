@@ -7,11 +7,19 @@ COL_UCZNIOWIE = "postepy_uczniow"
 HASLO_SYSTEMOWE = "TwojeTajneHaslo123" # W przyszłości przenieś to do st.secrets
 
 # --- KONFIGURACJA CSS ---
-st.markdown("""
+st.markdown(
+    """
     <style>
-        [data-testid="stSidebarNav"] {display: none !important;}
+        [data-testid="stSidebar"] {
+            display: none;
+        }
+        [data-testid="collapsedSidebar"] {
+            display: none;
+        }
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
 # --- FIRESTORE ---
 @st.cache_resource
