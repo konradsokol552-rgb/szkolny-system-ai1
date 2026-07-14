@@ -4,6 +4,14 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 import pandas as pd
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# --- STAŁE ---
+STREFA_PL = ZoneInfo("Europe/Warsaw")
+COL_UCZNIOWIE = "postepy_uczniow"
+COL_PRZEDMIOTY = "przedmioty"
+COL_LEKCJE = "ustawienia_lekcji"
+DOC_LEKCJA_GLOBAL = "globalna"
 
 # --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
 st.markdown("""
@@ -20,73 +28,88 @@ if st.session_state.get("role") != "uczen":
     st.stop()
 
 # =====================================================================
-# KONFIGURACJA FIRESTORE
+# POŁĄCZENIE Z BAZĄ DANYCH (ZCACHEOWANE)
 # =====================================================================
-def init_firestore():
+@st.cache_resource
+def get_db():
     try:
         key_dict = st.secrets["connections"]["firestore"]
         creds = service_account.Credentials.from_service_account_info(key_dict)
         return firestore.Client(credentials=creds, project=key_dict["project_id"])
     except Exception as e:
-        st.error(f"❌ KRYTYCZNY BŁĄD FIRESTORE: {str(e)}")
-        return None
+        st.error(f"❌ KRYTYCZNY BŁĄD AUTORYZACJI FIRESTORE: {str(e)}")
+        st.stop()
 
-db = init_firestore()
-if db is None:
-    st.stop()
+db = get_db()
 
-# --- SPRAWDZENIE BLOKADY CZASOWEJ SERWERA ---
-lekcja_aktywna = False
-status_lekcji = db.collection("ustawienia_lekcji").document("globalna").get()
-if status_lekcji.exists:
-    godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
-    if godzina_blokady_str:
-        godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S")
-        if datetime.now() < godzina_blokady:
-            lekcja_aktywna = True
+# --- SPRAWDZENIE BLOKADY CZASOWEJ (Z JEDNOLITĄ STREFĄ CZASOWĄ) ---
+def sprawdz_aktywnosc_lekcji():
+    try:
+        status_lekcji = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
+        if status_lekcji.exists:
+            godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
+            if godzina_blokady_str:
+                # Zamieniamy czas z bazy na obiekt świadomy strefy czasowej
+                godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
+                return datetime.now(STREFA_PL) < godzina_blokady
+    except Exception:
+        pass
+    return False
 
+lekcja_aktywna = sprawdz_aktywnosc_lekcji()
+
+# --- POBIERANIE STRUKTURY PROGRAMU (ZCACHEOWANE NA 5 MINUT) ---
+@st.cache_data(ttl=300)
 def pobierz_strukture():
-    docs = db.collection("przedmioty").stream()
-    struktura = {}
-    for doc in docs:
-        dane = doc.to_dict().get("lista_tematow", [])
-        if isinstance(dane, list):
-            struktura[doc.id] = dane
-        else:
-            struktura[doc.id] = [str(dane)]
-    return struktura
+    try:
+        docs = db.collection(COL_PRZEDMIOTY).stream()
+        struktura = {}
+        for doc in docs:
+            dane = doc.to_dict().get("lista_tematow", [])
+            struktura[doc.id] = dane if isinstance(dane, list) else [str(dane)]
+        return struktura
+    except Exception as e:
+        st.error(f"Błąd struktury: {e}")
+        return {}
 
 def wczytaj_profil_z_chmury(identyfikator):
-    doc = db.collection("postepy_uczniow").document(identyfikator).get()
-    return doc.to_dict() if doc.exists else None
+    try:
+        doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
+        return doc.to_dict() if doc.exists else None
+    except Exception as e:
+        st.error(f"Nie udało się wczytać profilu: {e}")
+        return None
 
 def zapisz_profil_w_chmurze():
-    if "zalogowany_id" in st.session_state:
-        postepy = st.session_state.get("postep_tematow", {})
-        historia = st.session_state.get("historia_czatow", {})
+    identyfikator = st.session_state.zalogowany_id
+    postepy = st.session_state.get("postep_tematow", {})
+    historia = st.session_state.get("historia_czatow", {})
+    
+    if not isinstance(historia, dict):
+        historia = {}
         
-        if not isinstance(historia, dict):
-            historia = {}
-            
-        if "aktualny_temat" in st.session_state:
-            temat = st.session_state.aktualny_temat
-            licznik = st.session_state.get("licznik_zadan", 0)
-            
-            if not isinstance(postepy.get(temat), dict):
-                postepy[temat] = {"status": postepy.get(temat, "W trakcie")}
-            postepy[temat]["licznik"] = licznik
-            st.session_state.postep_tematow = postepy
+    if "aktualny_temat" in st.session_state:
+        temat = st.session_state.aktualny_temat
+        licznik = st.session_state.get("licznik_zadan", 0)
+        
+        if not isinstance(postepy.get(temat), dict):
+            postepy[temat] = {"status": postepy.get(temat, "W trakcie")}
+        postepy[temat]["licznik"] = licznik
+        st.session_state.postep_tematow = postepy
 
-        dane_do_zapisu = {
-            "user_api_key": st.session_state.get("user_api_key", ""),
-            "postep_tematow": postepy,
-            "historia_czatow": historia,
-            "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
-        }
-        db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).set(dane_do_zapisu, merge=True)
+    dane_do_zapisu = {
+        "user_api_key": st.session_state.get("user_api_key", ""),
+        "postep_tematow": postepy,
+        "historia_czatow": historia,
+        "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
+    }
+    try:
+        db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
+    except Exception as e:
+        st.error(f"Błąd zapisu danych: {e}")
 
 def czy_temat_niezaliczone(t):
-    dane = st.session_state.postep_tematow.get(t, "Nie rozpoczęte")
+    dane = st.session_state.get("postep_tematow", {}).get(t, "Nie rozpoczęte")
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
 
@@ -149,21 +172,24 @@ FAZA OCENIANIA:
 """
 
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
-    if not st.session_state.get("user_api_key"):
+    api_key = st.session_state.get("user_api_key")
+    if not api_key:
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={st.session_state.user_api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
     
-    historia_do_wyslania = historia_rozmowy[-10:]
+    contents = [
+        {
+            "role": "user" if m["role"] == "user" else "model",
+            "parts": [{"text": m["content"]}]
+        }
+        for m in historia_rozmowy[-10:]
+    ]
     
-    contents = []
-    for m in historia_do_wyslania:
-        role = "user" if m["role"] == "user" else "model"
-        contents.append({"role": role, "parts": [{"text": m["content"]}]})
-    
-    dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
         dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie."
+    else:
+        dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
 
     payload = {
         "contents": contents,
@@ -171,104 +197,111 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     }
     
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=15)
         if response.status_code == 429:
-            raise Exception("Limit 429 przekroczony - ponawiam próbę...")
-            
+            return "❌ Przeciążenie serwera (429). Spróbuj ponownie za chwilę."
         if response.status_code == 200:
             return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"❌ Błąd API ({response.status_code}): {response.text}"
+        return f"❌ Błąd API ({response.status_code}): {response.text}"
     except Exception as e:
         return f"❌ Błąd połączenia: {str(e)}"
 
 # =====================================================================
-# INTERFEJS GŁÓWNY (Sidebar)
+# PASEK BOCZNY
 # =====================================================================
 if "struktura_dydaktyczna" not in st.session_state:
     st.session_state.struktura_dydaktyczna = pobierz_strukture()
 
 with st.sidebar:
-    if st.button("Wyloguj"):
+    if st.button("Wyloguj", use_container_width=True):
         st.session_state.clear()
         st.switch_page("app.py")
 
     st.header("🏫 Dziennik Ucznia")
+    
+    if not st.session_state.struktura_dydaktyczna:
+        st.warning("Brak przedmiotów w bazie.")
+        st.stop()
+        
     wybrany_przedmiot = st.selectbox("Wybierz przedmiot:", list(st.session_state.struktura_dydaktyczna.keys()))
     dostepne = st.session_state.struktura_dydaktyczna.get(wybrany_przedmiot, [])
     
     st.subheader("📚 Status tematów")
     
     def priorytet(t):
-        dane = st.session_state.postep_tematow.get(t, "Nie rozpoczęte")
+        dane = st.session_state.get("postep_tematow", {}).get(t, "Nie rozpoczęte")
         s = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
         return {"W trakcie": 0, "Nie rozpoczęte": 1, "NIEZALICZONY": 2, "ZALICZONY": 3}.get(s, 4)
 
     for temat in sorted(dostepne, key=priorytet):
-        dane = st.session_state.postep_tematow.get(temat, "Nie rozpoczęte")
+        dane = st.session_state.get("postep_tematow", {}).get(temat, "Nie rozpoczęte")
         status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
         
-        if status == "ZALICZONY": st.success(f"✅ {temat}")
-        elif status == "W trakcie": st.info(f"🔄 {temat}")
-        elif status == "NIEZALICZONY": st.error(f"❌ {temat} (niezaliczony)")
-        else: st.warning(f"🚩 {temat}")
+        if status == "ZALICZONY":
+            st.success(f"✅ {temat}")
+        elif status == "W trakcie":
+            st.info(f"🔄 {temat}")
+        elif status == "NIEZALICZONY":
+            st.error(f"❌ {temat} (niezaliczony)")
+        else:
+            st.warning(f"🚩 {temat}")
         
     st.markdown("---")
     
-    wybor_tematu = st.selectbox(
-        "Wybierz temat do rozpoczęcia:", 
-        [t for t in dostepne if czy_temat_niezaliczone(t)],
-        key="glowny_wybor_tematu"
-    )
-    
-    if st.button("Rozpocznij lekcję"):
-        if not lekcja_aktywna:
-            st.error("Nie można rozpocząć lekcji. Nauczyciel nie aktywował czasu zajęć.")
-        else:
-            st.session_state.aktualny_temat = wybor_tematu
-            profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-            
-            if profil and isinstance(profil, dict):
-                st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
-                st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu, None)
-                
-                stan_tematu = profil.get("postep_tematow", {}).get(wybor_tematu)
-                st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
-                
-                historia = profil.get("historia_czatow", {})
-                st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+    tematy_do_wyboru = [t for t in dostepne if czy_temat_niezaliczone(t)]
+    if not tematy_do_wyboru:
+        st.success("Wszystkie tematy zostały zaliczone! 🎉")
+    else:
+        wybor_tematu = st.selectbox("Wybierz temat:", tematy_do_wyboru, key="glowny_wybor_tematu")
+        
+        if st.button("Rozpocznij lekcję", use_container_width=True):
+            if not lekcja_aktywna:
+                st.error("Nauczyciel nie aktywował jeszcze lekcji.")
             else:
-                st.session_state.teoria_lekcji = None
-                st.session_state.messages = []
-                st.session_state.licznik_zadan = 0
+                st.session_state.aktualny_temat = wybor_tematu
+                profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
                 
-            if not st.session_state.messages:
-                with st.spinner("Przygotowuję lekcję..."):
-                    instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                    odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
+                if profil and isinstance(profil, dict):
+                    st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
+                    st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu)
                     
-                    if "[TEORIA]" in odp and "[ZADANIE]" in odp:
-                        st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
-                        if "teorie_lekcji" not in st.session_state: st.session_state.teorie_lekcji = {}
-                        st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
+                    stan_tematu = profil.get("postep_tematow", {}).get(wybor_tematu)
+                    st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
+                    
+                    historia = profil.get("historia_czatow", {})
+                    st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
+                else:
+                    st.session_state.teoria_lekcji = None
+                    st.session_state.messages = []
+                    st.session_state.licznik_zadan = 0
+                    
+                if not st.session_state.messages:
+                    with st.spinner("Inicjalizacja lekcji z AI..."):
+                        instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
+                        odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
                         
-                        st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
-                        zapisz_profil_w_chmurze()
-                    else:
-                        st.session_state.teoria_lekcji = odp
-            st.rerun()
+                        if "[TEORIA]" in odp and "[ZADANIE]" in odp:
+                            st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
+                            if "teorie_lekcji" not in st.session_state:
+                                st.session_state.teorie_lekcji = {}
+                            st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
+                            st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
+                            zapisz_profil_w_chmurze()
+                        else:
+                            st.session_state.teoria_lekcji = odp
+                st.rerun()
 
 # =====================================================================
-# EKRAN GŁÓWNY
+# OBSZAR GŁÓWNY APPLICATION VIZ
 # =====================================================================
 if "aktualny_temat" not in st.session_state:
-    st.title(f"Cześć Uczniu, w czym mogę pomóc?")
+    st.title("Cześć Uczniu, w czym mogę pomóc?")
     st.subheader("Twój postęp (ostatnie 4 tygodnie)")
     
     dzis = datetime.now()
     tygodnie_dane = {"Tydzień 1": 0, "Tydzień 2": 0, "Tydzień 3": 0, "Tydzień 4": 0}
 
-    for temat, dane in st.session_state.postep_tematow.items():
+    for temat, dane in st.session_state.get("postep_tematow", {}).items():
         status = dane.get("status") if isinstance(dane, dict) else dane
         data_str = dane.get("data") if isinstance(dane, dict) else None
         
@@ -277,10 +310,14 @@ if "aktualny_temat" not in st.session_state:
                 data_uko = datetime.strptime(data_str, "%Y-%m-%d")
                 roznica_dni = (dzis - data_uko).days
                 
-                if 0 <= roznica_dni < 7: tygodnie_dane["Tydzień 1"] += 1
-                elif 7 <= roznica_dni < 14: tygodnie_dane["Tydzień 2"] += 1
-                elif 14 <= roznica_dni < 21: tygodnie_dane["Tydzień 3"] += 1
-                elif 21 <= roznica_dni < 28: tygodnie_dane["Tydzień 4"] += 1
+                if 0 <= roznica_dni < 7:
+                    tygodnie_dane["Tydzień 1"] += 1
+                elif 7 <= roznica_dni < 14:
+                    tygodnie_dane["Tydzień 2"] += 1
+                elif 14 <= roznica_dni < 21:
+                    tygodnie_dane["Tydzień 3"] += 1
+                elif 21 <= roznica_dni < 28:
+                    tygodnie_dane["Tydzień 4"] += 1
             except ValueError:
                 continue 
 
@@ -295,43 +332,37 @@ else:
 
     if stan_pomocy:
         if st.button("🟢 Odwołaj wezwanie pomocy", use_container_width=True):
-            db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
+            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": False,
                 "aktualny_temat_problemu": ""
             })
             st.rerun()
     else:
         if st.button("🚨 WEZWIJ NAUCZYCIELA DO POMOCY", use_container_width=True):
-            # Tu dodajemy inkrementację licznika
             temat = st.session_state.aktualny_temat
-            
-            # Pobieramy obecne dane tematu, żeby nie nadpisać wszystkiego
             profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-            postepy = profil.get("postep_tematow", {})
+            postepy = profil.get("postep_tematow", {}) if profil else {}
             
             if temat not in postepy:
                 postepy[temat] = {"status": "W trakcie", "licznik_sos": 0}
             
-            # Inkrementujemy licznik SOS
             if isinstance(postepy[temat], dict):
                 postepy[temat]["licznik_sos"] = postepy[temat].get("licznik_sos", 0) + 1
             
-            # Zapisujemy wszystko do bazy
-            db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
+            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": True,
                 "aktualny_temat_problemu": temat,
                 "postep_tematow": postepy
             })
             st.rerun()
 
-    # --- WERYFIKACJA BLOKADY CZASU PRZED URUCHOMIENIEM ZADAŃ ---
+    # --- WERYFIKACJA BLOKADY CZASOWEJ ---
     if not lekcja_aktywna:
-        st.error("🔒 Czas lekcji dobiegł końca! Czat i zadania zostały zablokowane przez nauczyciela.")
+        st.error("🔒 Lekcja zakończona! Czat i zadania zostały zablokowane.")
         if st.session_state.get("teoria_lekcji"):
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
-        # Standardowy widok aktywnej lekcji
         st.subheader("Postęp w temacie:")
         licznik = st.session_state.get("licznik_zadan", 0)
         st.progress(min(licznik / 8, 1.0))
@@ -355,7 +386,7 @@ else:
                 stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
                 status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
                 
-                if status == "Nie rozpoczęte" or status is None:
+                if status in ["Nie rozpoczęte", None]:
                     st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
                     zapisz_profil_w_chmurze() 
                 
