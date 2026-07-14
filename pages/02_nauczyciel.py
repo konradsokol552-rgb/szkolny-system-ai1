@@ -106,13 +106,18 @@ if "wybrany_uczen_id" in st.session_state:
         postepy = dane.get('postep_tematow', {})
         for temat, stan in postepy.items():
             status = stan.get("status") if isinstance(stan, dict) else stan
+            licznik_sos = stan.get("licznik_sos", 0) if isinstance(stan, dict) else 0
+            
+            # Wyświetlamy licznik, jeśli jest większy niż 0
+            sos_info = f" | 🆘 SOS: {licznik_sos}" if licznik_sos > 0 else ""
+            
             if status == "ZALICZONY":
-                st.success(f"✅ {temat} - ZALICZONY")
+                st.success(f"✅ {temat} - ZALICZONY{sos_info}")
             elif status == "W trakcie":
                 licznik = stan.get("licznik", 0) if isinstance(stan, dict) else 0
-                st.info(f"🔄 {temat} - W trakcie ({licznik}/8 zadań)")
+                st.info(f"🔄 {temat} - W trakcie ({licznik}/8 zadań){sos_info}")
             else:
-                st.error(f"❌ {temat} - {status}")
+                st.error(f"❌ {temat} - {status}{sos_info}")
                 
         if st.button(f"Zresetuj dane ucznia {uczen_id}"):
             doc_ref.update({

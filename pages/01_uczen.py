@@ -302,9 +302,25 @@ else:
             st.rerun()
     else:
         if st.button("🚨 WEZWIJ NAUCZYCIELA DO POMOCY", use_container_width=True):
+            # Tu dodajemy inkrementację licznika
+            temat = st.session_state.aktualny_temat
+            
+            # Pobieramy obecne dane tematu, żeby nie nadpisać wszystkiego
+            profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+            postepy = profil.get("postep_tematow", {})
+            
+            if temat not in postepy:
+                postepy[temat] = {"status": "W trakcie", "licznik_sos": 0}
+            
+            # Inkrementujemy licznik SOS
+            if isinstance(postepy[temat], dict):
+                postepy[temat]["licznik_sos"] = postepy[temat].get("licznik_sos", 0) + 1
+            
+            # Zapisujemy wszystko do bazy
             db.collection("postepy_uczniow").document(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": True,
-                "aktualny_temat_problemu": st.session_state.aktualny_temat
+                "aktualny_temat_problemu": temat,
+                "postep_tematow": postepy
             })
             st.rerun()
 
