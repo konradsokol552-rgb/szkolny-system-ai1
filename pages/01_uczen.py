@@ -262,7 +262,7 @@ with st.sidebar:
 # EKRAN GŁÓWNY
 # =====================================================================
 if "aktualny_temat" not in st.session_state:
-    st.title(f"Cześć {st.session_state.zalogowany_id}, w czym mogę pomóc?")
+    st.title(f"Cześć Uczniu, w czym mogę pomóc?")
     st.subheader("Twój postęp (ostatnie 4 tygodnie)")
     
     dzis = datetime.now()
