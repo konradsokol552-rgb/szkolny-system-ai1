@@ -14,11 +14,11 @@ COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
 
 # --- UKRYCIE DOMYŚLNEGO MENU STREAMLIT ---
-st.markdown("""
-    <style>
-        [data-testid="stSidebarNav"] {display: none !important;}
-    </style>
-""", unsafe_allow_html=True)
+#st.markdown("""
+#    <style>
+#        [data-testid="stSidebarNav"] {display: none !important;}
+#    </style>
+#""", unsafe_allow_html=True)
 
 # --- STRAŻNIK ---
 if "zalogowany_id" not in st.session_state:
