@@ -2,6 +2,16 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 
+st.set_page_config(page_title="Szkolny System AI", layout="wide")
+
+# 2. Brutalne wycięcie stopki z linkami za pomocą CSS
+st.markdown("""
+    <style>
+    footer {visibility: hidden !important;}
+    .stAppDeployButton {display: none !important;}
+    </style>
+""", unsafe_html=True)
+
 # --- STAŁE ---
 COL_UCZNIOWIE = "postepy_uczniow"
 HASLO_SYSTEMOWE = "TwojeTajneHaslo123" # W przyszłości przenieś to do st.secrets
