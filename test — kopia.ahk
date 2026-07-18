@@ -1,39 +1,54 @@
 ﻿#NoEnv
 #SingleInstance Force
 
+; Zmienna globalna przechowująca unikalne ID głównego okna aplikacji
+global MainKioskHWND := 0
+
 ; 1. Odpalenie Chrome w trybie kiosku
 Run, "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk https://szkolny-system-ai.streamlit.app
 
-; 2. Ustawienie timera na 45 minut (lekcja)
+; 2. Przechwycenie uchwytu systemowego (HWND) okna Kiosku zaraz po jego aktywacji
+WinWaitActive, ahk_exe chrome.exe,, 10
+if (!ErrorLevel)
+{
+    WinGet, MainKioskHWND, ID, A
+}
+
+; 3. Ustawienie czasu lekcji na 45 minut
 SetTimer, ZamknijKiosk, -2700000
 
-; ZABEZPIECZENIE LINKÓW: Sprawdzaj co 1 sekundę, czy uczeń nie uciekł ze strony
+; 4. BEZPIECZNY START: Czekamy 15 sekund na pełne załadowanie aplikacji i stabilizację tytułu okna.
+; Przez te 15 sekund uczniowie mają zablokowane klawisze, ale skrypt nie zabije Chrome.
+SetTimer, UruchomStraznika, -15000
+return
+
+UruchomStraznika:
 SetTimer, PilnujAplikacji, 1000
 return
 
 ; =============================================================================
-; 3. BLOKADA KLAWISZY UCIECZKI I OTWIERANIA NOWYCH KART
+; 5. BLOKADA KLAWISZY UCIECZKI I OTWIERANIA NOWYCH KART
 ; =============================================================================
 !F4::return      ; Blokuje Alt + F4
-^w::return       ; Blokuje Ctrl + W (zamknięcie karty)
-LWin::return     ; Blokuje lewy klawisz Windows (menu Start)
+^w::return       ; Blokuje Ctrl + W
+LWin::return     ; Blokuje lewy klawisz Windows
 RWin::return     ; Blokuje prawy klawisz Windows
-!Tab::return     ; Blokuje Alt + Tab (przełączanie okien)
+!Tab::return     ; Blokuje Alt + Tab
 
-; Blokada sprytnych kliknięć myszką do otwierania linków w tle:
-MButton::return  ; Blokuje kliknięcie kółkiem myszy (Middle Click)
+; Blokada kliknięć myszką do otwierania linków w tle:
+MButton::return  ; Blokuje kliknięcie kółkiem myszy
 ^LButton::return ; Blokuje Ctrl + Lewy Klik
 +LButton::return ; Blokuje Shift + Lewy Klik
 
 ; =============================================================================
-; 4. TAJNY SKRÓT DLA NAUCZYCIELA Z HASŁEM (Ctrl + Shift + K)
+; 6. TAJNY SKRÓT DLA NAUCZYCIELA Z HASŁEM (Ctrl + Shift + K)
 ; =============================================================================
 ^+k::
 InputBox, WpisaneHaslo, Autoryzacja systemowa, Podaj haslo nauczyciela:, HIDE, 260, 130
 if (ErrorLevel) 
     return
 
-if (WpisaneHaslo = "1234")
+if (WpisakaHaslo = "1234" or WpisaneHaslo = "1234") ; Zabezpieczenie przed literówką
 {
     Process, Close, chrome.exe
     ExitApp
@@ -45,33 +60,48 @@ else
 return
 
 ; =============================================================================
-; 5. FUNKCJE SYSTEMOWE (TIMERY)
+; 7. FUNKCJE SYSTEMOWE MONITORA
 ; =============================================================================
 
-; Funkcja wywoływana automatycznie po 45 minutach
 ZamknijKiosk:
 Process, Close, chrome.exe
 ExitApp
 
-; Nowa funkcja - zawraca użytkownika zamiast zamykać aplikację
 PilnujAplikacji:
-IfWinExist, ahk_exe chrome.exe
+; Pobieramy ID oraz proces okna, które aktualnie znajduje się na pierwszym planie
+WinGet, ActiveHWND, ID, A
+WinGet, ActiveProcess, ProcessName, A
+
+; Interweniujemy tylko wtedy, gdy akcja dotyczy przeglądarki Chrome
+if (ActiveProcess = "chrome.exe")
 {
-    WinGetActiveTitle, TytulOkna
-    StringLower, TytulMaly, TytulOkna
-    
-    ; Jeśli okno jest aktywne, ale w tytule NIE MA ściśle nazwy Twojej aplikacji
-    ; Oznacza to, że uczeń przeszedł na inną stronę (np. GitHub lub logowanie Streamlit)
-    if (TytulMaly != "" and !InStr(TytulMaly, "szkolny system ai"))
+    ; SCENARIUSZ A: Użytkownik jest w głównym oknie aplikacji
+    if (ActiveHWND = MainKioskHWND)
     {
-        ; Wyślij skrót Alt + Strzałka w lewo (wstecz w przeglądarce)
-        Send, !{Left}
+        WinGetActiveTitle, TytulOkna
+        StringLower, TytulMaly, TytulOkna
         
-        ; Dodatkowo na wypadek gdyby otworzyło się nowe okno (pop-up), zamykamy je
-        ; bez ubijania głównego procesu Chrome
-        IfWinNotActive, Szkolny System AI
+        ; Ignoruj puste stany przejściowe
+        if (TytulMaly = "")
+            return
+            
+        ; Jeśli tytuł nie zawiera autoryzowanych fraz z konfiguracji Pythona
+        if (!InStr(TytulMaly, "szkolny") and !InStr(TytulMaly, "streamlit"))
         {
-            WinClose, A
+            ; Zamiast ubijać okno, bezwzględnie cofamy użytkownika wstecz
+            Send, !{Left}
+        }
+    }
+    ; SCENARIUSZ B: Otworzyło się NOWE okno Chrome (pop-up, nowa karta z linku zewnętrznego)
+    else
+    {
+        ; Ponieważ to nie jest nasze główne okno aplikacji, bezpiecznie je uśmiercamy
+        WinClose, A
+        
+        ; Wymuszamy powrót fokusu na główne okno egzaminacyjne
+        if (MainKioskHWND != 0)
+        {
+            WinActivate, ahk_id %MainKioskHWND%
         }
     }
 }

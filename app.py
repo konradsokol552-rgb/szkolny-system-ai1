@@ -2,7 +2,7 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 
-st.set_page_config(page_title="Szkolny System AI", layout="wide")
+st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="wide")
 
 # 2. Brutalne wycięcie stopki z linkami za pomocą CSS
 st.markdown("""
