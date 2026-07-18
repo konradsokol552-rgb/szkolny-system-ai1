@@ -1,8 +1,10 @@
 ﻿#NoEnv
 #SingleInstance Force
+Process, Close, chrome.exe
+Sleep, 300
 
 ; 1. Odpalenie Chrome w trybie kiosku
-Run, "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk https://szkolny-system-ai.streamlit.app
+Run, "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk --incognito --disable-session-crashed-bubble https://szkolny-system-ai.streamlit.app
 
 ; 2. Ustawienie timera na 45 minut (lekcja)
 SetTimer, ZamknijKiosk, -2700000
