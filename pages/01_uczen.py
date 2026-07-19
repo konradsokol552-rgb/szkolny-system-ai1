@@ -149,18 +149,23 @@ if lekcja_aktywna and "aktualny_temat" in st.session_state:
     # omijając tworzenie komponentu (i błędy 'missing value' oraz 'sandbox').
     
     st.html("""
-    <script>
-        console.log("Anty-cheat: System aktywny.");
-        
-        document.addEventListener("visibilitychange", function() {
-            if (document.hidden) {
-                console.log("Anty-cheat: Wykryto zmianę karty! Przeładowuję...");
-                // Używamy location.origin i location.pathname, aby wrócić dokładnie do tej strony
-                window.location.href = window.location.origin + window.location.pathname + "?cheat=true";
-            }
-        });
-    </script>
-    """)
+<script>
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden) {
+            // Zapisujemy flagę, że użytkownik uciekł
+            localStorage.setItem('cheat_detected', 'true');
+            // Przeładowanie, które nie niszczy ścieżki
+            window.location.reload(); 
+        }
+    });
+</script>
+<script>
+    if (localStorage.getItem('cheat_detected') === 'true') {
+        localStorage.removeItem('cheat_detected'); // czyścimy flagę
+        window.location.href = window.location.origin + window.location.pathname + "?cheat=true";
+    }
+</script>
+""")
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
