@@ -109,6 +109,19 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
+# === NOWOŚĆ: Przechwytywanie sygnału oszustwa z adresu URL ===
+if st.query_params.get("cheat") == "true":
+    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+    try:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "blokada_do": czas_kary
+        }, merge=True)
+        # Czyszczenie parametrów z URL, aby system nie zapętlił się po odblokowaniu konta
+        st.query_params.clear()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Błąd zapisu blokady: {e}")
+
 # =====================================================================
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
@@ -130,59 +143,39 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
         st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
         st.stop()
 
-# B. Aktywna detekcja ucieczki z karty (Działa tylko, gdy lekcja trwa i uczeń otworzył temat)
+# B. Aktywna detekcja ucieczki z karty (Bezpieczny komponent iframe z przekierowaniem URL)
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
-    
-    # 1. Tworzymy niewidoczny dla ucznia kontener z ukrytym przyciskiem wyzwalającym blokadę
-    st.html("""
-        <div id="cheat-trigger-wrapper" style="display: none;">
-    """)
-    
-    # Przycisk, który zostanie kliknięty przez JavaScript w tle
-    if st.button("TRIGGER_CHEAT_ACTION", key="hidden_cheat_btn"):
-        czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-        try:
-            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-                "blokada_do": czas_kary
-            }, merge=True)
-            st.rerun()
-        except Exception as e:
-            st.error(f"Błąd zapisu blokady: {e}")
-            
-    st.html("""
-        </div>
-    """)
-
-    # 2. Wstrzykujemy asynchroniczny skrypt JS do głównego okna aplikacji
-    st.html("""
+    components.html("""
         <script>
-            // Funkcja wyszukująca ukryty przycisk i klikająca go
-            function executeLock() {
-                // Szukamy wszystkich przycisków na stronie
-                const buttons = window.parent.document.querySelectorAll("button");
-                for (const btn of buttons) {
-                    if (btn.innerText && btn.innerText.includes("TRIGGER_CHEAT_ACTION")) {
-                        console.log("🚨 Wykryto próbę oszustwa! Uruchamiam blokadę...");
-                        btn.click();
-                        break;
+            function zglosOszustwo() {
+                try {
+                    // Pobieramy aktualny adres URL okna głównego (rodzica)
+                    var urlRodzica = window.parent.location.href;
+                    
+                    // Sprawdzamy, czy parametr cheat nie został już dodany, aby uniknąć pętli
+                    if (!urlRodzica.includes("cheat=true")) {
+                        var separator = urlRodzica.includes("?") ? "&" : "?";
+                        // Wymuszamy bezpieczną zmianę adresu URL w oknie głównym przeglądarki
+                        window.parent.location.href = urlRodzica + separator + "cheat=true";
                     }
+                } catch (e) {
+                    console.error("Przeglądarka zablokowała dostęp do okna nadrzędnego:", e);
                 }
             }
 
-            // A. Detekcja zmiany karty lub minimalizacji okna
-            document.addEventListener("visibilitychange", () => {
+            // 1. Detekcja zmiany karty lub minimalizacji przeglądarki
+            document.addEventListener("visibilitychange", function() {
                 if (document.hidden) {
-                    executeLock();
+                    zglosOszustwo();
                 }
             });
 
-            // B. Detekcja otwarcia DevTools (Badaj element) lub kliknięcia poza przeglądarkę
-            window.addEventListener("blur", () => {
-                // Opcjonalne: blur odpala się też, gdy uczeń kliknie np. w pasek adresu URL
-                executeLock();
+            // 2. Detekcja utraty focusu (kliknięcie w inny program, otwarcie narzędzi deweloperskich)
+            window.addEventListener("blur", function() {
+                zglosOszustwo();
             });
         </script>
-    """)
+    """, height=0)  # Wyświetlane jako niewidoczny element o wysokości 0
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
@@ -431,7 +424,7 @@ else:
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
-        # Tutaj zaczyna się w pełni poprawnie wcięty interfejs aktywnej lekcji
+        # Interfejs aktywnej lekcji
         st.subheader("Postęp w temacie:")
         licznik = st.session_state.get("licznik_zadan", 0)
         st.progress(min(licznik / 8, 1.0))
