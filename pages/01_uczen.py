@@ -150,20 +150,24 @@ if lekcja_aktywna and "aktualny_temat" in st.session_state:
     
     st.html("""
 <script>
+    // 1. Detekcja ucieczki
     document.addEventListener("visibilitychange", function() {
         if (document.hidden) {
-            // Zapisujemy flagę, że użytkownik uciekł
             localStorage.setItem('cheat_detected', 'true');
-            // Przeładowanie, które nie niszczy ścieżki
             window.location.reload(); 
         }
     });
-</script>
-<script>
-    if (localStorage.getItem('cheat_detected') === 'true') {
-        localStorage.removeItem('cheat_detected'); // czyścimy flagę
-        window.location.href = window.location.origin + window.location.pathname + "?cheat=true";
-    }
+
+    // 2. Przetworzenie kary po odświeżeniu
+    window.addEventListener('load', function() {
+        if (localStorage.getItem('cheat_detected') === 'true') {
+            localStorage.removeItem('cheat_detected');
+            // Teraz, gdy strona jest już przeładowana, bezpiecznie dodajemy parametr
+            const url = new URL(window.location.href);
+            url.searchParams.set('cheat', 'true');
+            window.location.href = url.toString();
+        }
+    });
 </script>
 """)
 
