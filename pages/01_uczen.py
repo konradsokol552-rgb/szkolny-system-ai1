@@ -147,35 +147,32 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
     components.html("""
         <script>
+            console.log("Anty-cheat: Skrypt załadowany poprawnie.");
+            
             function zglosOszustwo() {
-                try {
-                    // Pobieramy aktualny adres URL okna głównego (rodzica)
-                    var urlRodzica = window.parent.location.href;
-                    
-                    // Sprawdzamy, czy parametr cheat nie został już dodany, aby uniknąć pętli
-                    if (!urlRodzica.includes("cheat=true")) {
-                        var separator = urlRodzica.includes("?") ? "&" : "?";
-                        // Wymuszamy bezpieczną zmianę adresu URL w oknie głównym przeglądarki
-                        window.parent.location.href = urlRodzica + separator + "cheat=true";
-                    }
-                } catch (e) {
-                    console.error("Przeglądarka zablokowała dostęp do okna nadrzędnego:", e);
-                }
+                console.log("Anty-cheat: Wykryto zmianę karty/focusa!");
+                
+                // Używamy window.location.href zamiast window.parent.location.href
+                // To jest bezpieczniejsze – zawsze przeładuje bieżące okno/iframe
+                const url = window.location.origin + window.location.pathname + "?cheat=true";
+                window.location.href = url;
             }
 
-            // 1. Detekcja zmiany karty lub minimalizacji przeglądarki
+            // 1. Zmiana karty
             document.addEventListener("visibilitychange", function() {
                 if (document.hidden) {
+                    console.log("Anty-cheat: Karta została ukryta.");
                     zglosOszustwo();
                 }
             });
 
-            // 2. Detekcja utraty focusu (kliknięcie w inny program, otwarcie narzędzi deweloperskich)
+            // 2. Utrata focusu (blur)
             window.addEventListener("blur", function() {
+                console.log("Anty-cheat: Utracono focus okna.");
                 zglosOszustwo();
             });
         </script>
-    """, height=0)  # Wyświetlane jako niewidoczny element o wysokości 0
+    """, height=0)
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
