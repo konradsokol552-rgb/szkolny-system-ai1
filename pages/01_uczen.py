@@ -84,68 +84,52 @@ lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
 # =====================================================================
-# SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
+# 4. SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
+if "js_listener_set" not in st.session_state:
+    st.html("""
+    <script>
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                localStorage.setItem('cheat_detected', 'true');
+            }
+        });
+    </script>
+    """)
+    st.session_state.js_listener_set = True
 
-# 1. PRZECHWYTYWANIE SYGNAŁU Z ADRESU URL (PYTHON)
-# Gdy JavaScript wymusi przeładowanie z parametrem ?cheat=true, ta sekcja natychmiast nakłada karę
-if st.query_params.get("cheat") == "true":
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-    try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "blokada_do": czas_kary
-        }, merge=True)
-        # Czyszczenie parametrów z URL, aby system nie zapętlił się po odblokowaniu konta
-        st.query_params.clear()
-        st.rerun()
-    except Exception as e:
-        st.error(f"Błąd zapisu blokady: {e}")
+cheat_val = streamlit_js_eval(
+    js_expressions="localStorage.getItem('cheat_detected')",
+    key="cheat_check"
+)
 
-# 2. BRAMKA LOGICZNA - BLOKADA DOSTĘPU
-# Jeśli uczeń ma aktywną karę w bazie, odcinamy go całkowicie od reszty skryptu
+if cheat_val == 'true':
+    if "zalogowany_id" in st.session_state:
+        czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+        try:
+            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set(
+                {"blokada_do": czas_kary}, merge=True
+            )
+        except Exception as e:
+            st.error(f"Błąd zapisu blokady: {e}")
+            
+    streamlit_js_eval(js_expressions="localStorage.removeItem('cheat_detected')")
+    st.rerun()
+
+# Sprawdzanie, czy w załadowanym przed chwilą profilu widnieje aktywna blokada
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
     
-    # Normalizacja dla obiektów typu Datetime z Firestore vs strefa PL
+    # Naprawa dla obiektów typu Datetime vs Timestamp z Firestore
     if isinstance(blokada, datetime):
         czas_blokady = blokada
     else:
         czas_blokady = blokada.replace(tzinfo=STREFA_PL) 
         
     if czas_blokady > datetime.now(STREFA_PL):
-        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
-        st.warning(f"Twój dostęp do lekcji został zablokowany do: {czas_blokady.strftime('%H:%M:%S')}")
+        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY! 🚨")
+        st.warning(f"Twoje konto zostało zablokowane do: {czas_blokady.strftime('%H:%M:%S')}")
         st.stop()
-
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (JAVASCRIPT)
-# Używamy st.components.v1.html, który poprawnie wykonuje kod JS w przeglądarce
-st.components.v1.html("""
-<script>
-    // Funkcja uruchamiana przy złapaniu oszustwa
-    function zglosOszustwo() {
-        // Pobieramy adres URL głównego okna aplikacji Streamlit
-        let parentUrl = document.referrer;
-        if (parentUrl) {
-            let url = new URL(parentUrl);
-            url.searchParams.set("cheat", "true");
-            // Wymuszamy przekierowanie i przeładowanie całego okna przeglądarki
-            window.top.location.href = url.href;
-        }
-    }
-
-    // Wykrywanie: Zmiana karty, zminimalizowanie przeglądarki
-    document.addEventListener("visibilitychange", function() {
-        if (document.hidden) {
-            zglosOszustwo();
-        }
-    });
-
-    // Wykrywanie: Kliknięcie poza obszar okna przeglądarki (np. przejście do innej aplikacji)
-    window.parent.addEventListener("blur", function() {
-        zglosOszustwo();
-    });
-</script>
-""", height=0)
 
 # =====================================================================
 # FUNKCJA ZAPISU PROFILU (Musi być pod zdefiniowaniem zmiennych)
