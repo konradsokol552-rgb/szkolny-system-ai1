@@ -150,23 +150,20 @@ if lekcja_aktywna and "aktualny_temat" in st.session_state:
     
     st.html("""
 <script>
-    // 1. Detekcja ucieczki
     document.addEventListener("visibilitychange", function() {
+        // Log diagnostyczny - pojawi się w konsoli po zmianie karty
+        console.log("Anty-cheat: Stan widoczności zmieniony na: " + document.visibilityState);
+        
         if (document.hidden) {
+            console.log("Anty-cheat: Wykryto ukrycie dokumentu! Próbuję przeładować...");
             localStorage.setItem('cheat_detected', 'true');
             window.location.reload(); 
         }
     });
 
-    // 2. Przetworzenie kary po odświeżeniu
+    // Diagnostyka przy załadowaniu strony
     window.addEventListener('load', function() {
-        if (localStorage.getItem('cheat_detected') === 'true') {
-            localStorage.removeItem('cheat_detected');
-            // Teraz, gdy strona jest już przeładowana, bezpiecznie dodajemy parametr
-            const url = new URL(window.location.href);
-            url.searchParams.set('cheat', 'true');
-            window.location.href = url.toString();
-        }
+        console.log("Anty-cheat: Skrypt załadowany.");
     });
 </script>
 """)
