@@ -144,32 +144,23 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
         st.stop()
 
 # B. Aktywna detekcja ucieczki z karty (Bezpieczny komponent iframe z przekierowaniem URL)
-st.write(f"DEBUG: Czy lekcja aktywna? {lekcja_aktywna}")
-st.write(f"DEBUG: Czy aktualny temat istnieje? {'aktualny_temat' in st.session_state}")
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
+    # Używamy st.html, ponieważ wstrzykuje skrypt bezpośrednio do strony,
+    # omijając tworzenie komponentu (i błędy 'missing value' oraz 'sandbox').
     
-    # Tworzymy czysty skrypt JS, który używa obiektu URL do bezpiecznej modyfikacji parametrów
-    js_code = """
-    (function() {
-        const detectCheat = function() {
-            if (document.hidden) {
-                const url = new URL(window.location.href);
-                url.searchParams.set('cheat', 'true');
-                window.location.href = url.toString();
-            }
-        };
-
-        document.removeEventListener("visibilitychange", detectCheat);
-        document.addEventListener("visibilitychange", detectCheat);
+    st.html("""
+    <script>
+        console.log("Anty-cheat: System aktywny.");
         
-        window.removeEventListener("blur", detectCheat);
-        window.addEventListener("blur", detectCheat);
-    })();
-    """
-    
-    # Kluczowe: streamlit_js_eval wywołuje to raz. Używamy 'key', aby JS nie był wstrzykiwany wielokrotnie.
-    # Użyjemy streamlit_js_eval tylko do zarejestrowania event listenerów.
-    streamlit_js_eval(js_expressions=js_code, key="cheat_detection_script")
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                console.log("Anty-cheat: Wykryto zmianę karty! Przeładowuję...");
+                // Używamy location.origin i location.pathname, aby wrócić dokładnie do tej strony
+                window.location.href = window.location.origin + window.location.pathname + "?cheat=true";
+            }
+        });
+    </script>
+    """)
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
