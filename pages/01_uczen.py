@@ -132,12 +132,14 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
 
 # B. Aktywna detekcja ucieczki z karty (Działa tylko, gdy lekcja trwa i uczeń otworzył temat)
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
-    czy_ukryte = streamlit_js_eval(
-        js_expressions="document.hidden", 
-        want_return=True, 
-        key="cheat_detector"
-    )
-    if czy_ukryte:
+    
+    # 1. Tworzymy niewidoczny dla ucznia kontener z ukrytym przyciskiem wyzwalającym blokadę
+    st.html("""
+        <div id="cheat-trigger-wrapper" style="display: none;">
+    """)
+    
+    # Przycisk, który zostanie kliknięty przez JavaScript w tle
+    if st.button("TRIGGER_CHEAT_ACTION", key="hidden_cheat_btn"):
         czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
         try:
             db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
@@ -146,6 +148,41 @@ if lekcja_aktywna and "aktualny_temat" in st.session_state:
             st.rerun()
         except Exception as e:
             st.error(f"Błąd zapisu blokady: {e}")
+            
+    st.html("""
+        </div>
+    """)
+
+    # 2. Wstrzykujemy asynchroniczny skrypt JS do głównego okna aplikacji
+    st.html("""
+        <script>
+            // Funkcja wyszukująca ukryty przycisk i klikająca go
+            function executeLock() {
+                // Szukamy wszystkich przycisków na stronie
+                const buttons = window.parent.document.querySelectorAll("button");
+                for (const btn of buttons) {
+                    if (btn.innerText && btn.innerText.includes("TRIGGER_CHEAT_ACTION")) {
+                        console.log("🚨 Wykryto próbę oszustwa! Uruchamiam blokadę...");
+                        btn.click();
+                        break;
+                    }
+                }
+            }
+
+            // A. Detekcja zmiany karty lub minimalizacji okna
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) {
+                    executeLock();
+                }
+            });
+
+            // B. Detekcja otwarcia DevTools (Badaj element) lub kliknięcia poza przeglądarkę
+            window.addEventListener("blur", () => {
+                // Opcjonalne: blur odpala się też, gdy uczeń kliknie np. w pasek adresu URL
+                executeLock();
+            });
+        </script>
+    """)
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
