@@ -150,20 +150,11 @@ if lekcja_aktywna and "aktualny_temat" in st.session_state:
     
     st.html("""
 <script>
-    document.addEventListener("visibilitychange", function() {
-        // Log diagnostyczny - pojawi się w konsoli po zmianie karty
-        console.log("Anty-cheat: Stan widoczności zmieniony na: " + document.visibilityState);
-        
-        if (document.hidden) {
-            console.log("Anty-cheat: Wykryto ukrycie dokumentu! Próbuję przeładować...");
-            localStorage.setItem('cheat_detected', 'true');
-            window.location.reload(); 
-        }
-    });
-
-    // Diagnostyka przy załadowaniu strony
-    window.addEventListener('load', function() {
-        console.log("Anty-cheat: Skrypt załadowany.");
+    // Metoda alternatywna: Blur (utrata fokusu)
+    window.addEventListener("blur", function() {
+        console.log("Anty-cheat: Utracono fokus (blur)!");
+        localStorage.setItem('cheat_detected', 'true');
+        window.location.reload();
     });
 </script>
 """)
