@@ -9,9 +9,8 @@ st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centere
 st.markdown("""
     <style>
     footer {visibility: hidden !important;}
-    .stAppDeployButton {display: none !important;}
+    [data-testid="stViewerBadge"] {display: none !important;}
     [data-testid="stSidebar"] {display: none !important;}
-    [data-testid="collapsedSidebar"] {display: none !important;}
     </style>
 """, unsafe_allow_html=True)
 
