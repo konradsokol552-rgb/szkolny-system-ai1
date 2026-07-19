@@ -126,38 +126,44 @@ if st.query_params.get("cheat") == "true":
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
 
-# A. Egzekwowanie kary (Sprawdzenie aktywnej blokady czasowej)
-if profil_aktualny and "blokada_do" in profil_aktualny:
-    blokada_do_db = profil_aktualny["blokada_do"]
-
-    if isinstance(blokada_do_db, datetime):
-        czas_blokady = blokada_do_db.replace(tzinfo=STREFA_PL) if blokada_do_db.tzinfo is None else blokada_do_db
-    elif hasattr(blokada_do_db, 'timestamp'):
-        czas_blokady = datetime.fromtimestamp(blokada_do_db.timestamp(), tz=STREFA_PL)
-    else:
-        czas_blokady = datetime.now(STREFA_PL) - timedelta(minutes=1)
-
-    if datetime.now(STREFA_PL) < czas_blokady:
-        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY EGZAMINACYJNEJ! 🚨")
-        st.warning(f"Ze względów bezpieczeństwa Twoje konto zostało zablokowane do godziny: **{czas_blokady.strftime('%H:%M:%S')}**.")
-        st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
-        st.stop()
-
-# B. Aktywna detekcja ucieczki z karty (Bezpieczny komponent iframe z przekierowaniem URL)
-if lekcja_aktywna and "aktualny_temat" in st.session_state:
-    # Używamy st.html, ponieważ wstrzykuje skrypt bezpośrednio do strony,
-    # omijając tworzenie komponentu (i błędy 'missing value' oraz 'sandbox').
-    
-    st.html("""
+# 1. MECHANIZM DETEKCJI (JS)
+# Wstrzykujemy skrypt, który wykrywa ucieczkę i "flaguje" przeglądarkę
+st.html("""
 <script>
-    // Metoda alternatywna: Blur (utrata fokusu)
-    window.addEventListener("blur", function() {
-        console.log("Anty-cheat: Utracono fokus (blur)!");
-        localStorage.setItem('cheat_detected', 'true');
-        window.location.reload();
+    document.addEventListener("visibilitychange", function() {
+        if (document.hidden) {
+            localStorage.setItem('cheat_detected', 'true');
+            // Zamiast wymuszać reload, dodajemy parametr do URL
+            // To jest bezpieczniejsza metoda dla iframe Streamlit
+            const url = new URL(window.location.href);
+            url.searchParams.set('cheat', 'true');
+            window.location.href = url.toString();
+        }
     });
 </script>
 """)
+
+# 2. MECHANIZM EGZEKWOWANIA (PYTHON)
+# Sprawdzamy czy w URL pojawił się sygnał "cheat"
+if st.query_params.get("cheat") == "true":
+    # A. Zapis do bazy danych (Kara)
+    if "zalogowany_id" in st.session_state:
+        czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+        # TUTAJ TWOJA FUNKCJA DO BAZY, np:
+        # db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({"blokada_do": czas_kary}, merge=True)
+        
+        # B. Czyścimy parametr, żeby po odświeżeniu nie nakładać kary w nieskończoność
+        st.query_params.clear()
+        
+        # C. Wymuszamy odświeżenie widoku
+        st.rerun()
+
+# 3. BLOKADA (Jeśli baza mówi, że uczeń ma karę)
+# Tu wstawiasz sprawdzanie z bazy, które miałeś w punkcie A
+if profil_aktualny and profil_aktualny.get("blokada_do") and profil_aktualny["blokada_do"] > datetime.now(STREFA_PL):
+    st.error("🚨 WYKRYTO OPUSZCZENIE KARTY! 🚨")
+    st.warning("Twoje konto zostało zablokowane.")
+    st.stop()
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
