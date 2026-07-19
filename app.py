@@ -2,36 +2,23 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 
+# --- 1. GLOBALNA KONFIGURACJA (Dla całej aplikacji) ---
 st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="wide")
 
-# 2. Brutalne wycięcie stopki z linkami za pomocą CSS (TUTAJ BYŁ BŁĄD)
+# Brutalne wycięcie stopki oraz bocznego menu za pomocą CSS
 st.markdown("""
     <style>
     footer {visibility: hidden !important;}
     .stAppDeployButton {display: none !important;}
+    [data-testid="stSidebar"] {display: none !important;}
+    [data-testid="collapsedSidebar"] {display: none !important;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- STAŁE ---
+# --- 2. STAŁE I BAZA DANYCH (Bezpieczne do importowania w podstronach) ---
 COL_UCZNIOWIE = "postepy_uczniow"
-HASLO_SYSTEMOWE = "TwojeTajneHaslo123" # W przyszłości przenieś to do st.secrets
+HASLO_SYSTEMOWE = "TwojeTajneHaslo123"
 
-# --- KONFIGURACJA CSS ---
-st.markdown(
-    """
-    <style>
-        [data-testid="stSidebar"] {
-            display: none;
-        }
-        [data-testid="collapsedSidebar"] {
-            display: none;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# --- FIRESTORE ---
 @st.cache_resource
 def get_db():
     if "connections" not in st.secrets:
@@ -43,7 +30,7 @@ def get_db():
 
 db = get_db()
 
-# --- FUNKCJE POMOCNICZE ---
+# --- 3. FUNKCJE POMOCNICZE (Bezpieczne do importowania) ---
 def zaloguj_uzytkownika(id_input):
     doc_ref = db.collection(COL_UCZNIOWIE).document(id_input)
     doc = doc_ref.get()
@@ -70,31 +57,37 @@ def stworz_konto(id_input, typ, klucz_api):
     }
     db.collection(COL_UCZNIOWIE).document(id_input).set(nowy_profil)
 
-# --- INTERFEJS ---
-st.title("🏫 Logowanie do Systemu")
-id_input = st.text_input("Nazwa konta").strip()
 
-# LOGOWANIE
-if st.button("Zaloguj"):
-    if id_input and zaloguj_uzytkownika(id_input):
-        if st.session_state.role == "nauczyciel":
-            st.switch_page("pages/02_nauczyciel.py")
-        else:
-            st.switch_page("pages/01_uczen.py")
-    else:
-        st.error("Konto nie istnieje lub nazwa jest pusta.")
+# =============================================================================
+# --- 4. STRAŻNIK INTERFEJSU (KLUCZ DO NAPRAWY BŁĘDU) ---
+# Kod wewnątrz tej sekcji wykona się TYLKO wtedy, gdy użytkownik wejdzie bezpośrednio
+# na stronę logowania. Jeśli podstrona zaimportuje ten plik, kod poniżej zostanie zignorowany.
+# =============================================================================
+if __name__ == "__main__":
+    st.title("🏫 Logowanie do Systemu")
+    id_input = st.text_input("Nazwa konta").strip()
 
-# TWORZENIE KONTA
-with st.expander("Tworzenie konta"):
-    haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
-    typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel"])
-    nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
-    
-    if st.button("Zarejestruj konto"):
-        if haslo_tworzenia != HASLO_SYSTEMOWE:
-            st.error("Błędne hasło systemowe!")
-        elif not id_input or not nowy_klucz_api:
-            st.error("Wypełnij nazwę konta i klucz API!")
+    # LOGOWANIE
+    if st.button("Zaloguj"):
+        if id_input and zaloguj_uzytkownika(id_input):
+            if st.session_state.role == "nauczyciel":
+                st.switch_page("pages/02_nauczyciel.py")
+            else:
+                st.switch_page("pages/01_uczen.py")
         else:
-            stworz_konto(id_input, typ_konta, nowy_klucz_api)
-            st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
+            st.error("Konto nie istnieje lub nazwa jest pusta.")
+
+    # TWORZENIE KONTA
+    with st.expander("Tworzenie konta"):
+        haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
+        typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel"])
+        nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
+        
+        if st.button("Zarejestruj konto"):
+            if haslo_tworzenia != HASLO_SYSTEMOWE:
+                st.error("Błędne hasło systemowe!")
+            elif not id_input or not nowy_klucz_api:
+                st.error("Wypełnij nazwę konta i klucz API!")
+            else:
+                stworz_konto(id_input, typ_konta, nowy_klucz_api)
+                st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
