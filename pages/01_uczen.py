@@ -144,6 +144,8 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
         st.stop()
 
 # B. Aktywna detekcja ucieczki z karty (Bezpieczny komponent iframe z przekierowaniem URL)
+st.write(f"DEBUG: Czy lekcja aktywna? {lekcja_aktywna}")
+st.write(f"DEBUG: Czy aktualny temat istnieje? {'aktualny_temat' in st.session_state}")
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
     components.html("""
         <script>
