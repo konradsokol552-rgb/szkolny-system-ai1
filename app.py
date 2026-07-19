@@ -51,7 +51,7 @@ def stworz_konto(id_input, typ, klucz_api):
 # Kod w tej sekcji uruchomi się WYŁĄCZNIE, gdy użytkownik wejdzie na główny adres aplikacji.
 # Podczas importowania tego pliku przez podstrony, ta sekcja zostanie całkowicie pominięta.
 # =============================================================================
-if __name__ == "__main__":
+if __name__ == "__app__":
     
     # Przeniesione tutaj: Konfiguracja strony odpala się TYLKO dla ekranu logowania
     st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centered")
