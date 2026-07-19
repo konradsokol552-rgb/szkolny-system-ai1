@@ -4,13 +4,13 @@ from google.cloud import firestore
 
 st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="wide")
 
-# 2. Brutalne wycięcie stopki z linkami za pomocą CSS
+# 2. Brutalne wycięcie stopki z linkami za pomocą CSS (TUTAJ BYŁ BŁĄD)
 st.markdown("""
     <style>
     footer {visibility: hidden !important;}
     .stAppDeployButton {display: none !important;}
     </style>
-""", unsafe_html=True)
+""", unsafe_allow_html=True)
 
 # --- STAŁE ---
 COL_UCZNIOWIE = "postepy_uczniow"
