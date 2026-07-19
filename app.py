@@ -8,8 +8,13 @@ st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centere
 # Brutalne wycięcie stopki oraz bocznego menu za pomocą CSS
 st.markdown("""
     <style>
+    /* Ukrywa dolną stopkę (Created by konradsokol552-rgb...) */
     footer {visibility: hidden !important;}
+    
+    /* Ukrywa czerwony przycisk 'Hosted with Streamlit' */
     [data-testid="stViewerBadge"] {display: none !important;}
+    
+    /* Ukrywa boczny pasek gdy jest schowany (zostawiamy, bo to już robiłeś) */
     [data-testid="stSidebar"] {display: none !important;}
     </style>
 """, unsafe_allow_html=True)
