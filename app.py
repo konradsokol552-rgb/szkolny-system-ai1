@@ -18,17 +18,24 @@ def get_db():
 db = get_db()
 
 # --- 2. FUNKCJE POMOCNICZE WIZUALNE I LOGICZNE ---
-def ustaw_czysty_interfejs(ukryj_sidebar=true):
-    """Bezpieczna funkcja do wycinania stopki i przycisków hostingu"""
+def ustaw_czysty_interfejs(ukryj_sidebar=False):
+    """Maksymalnie agresywna wersja wycinania elementów interfejsu Streamlit"""
     style = """
         <style>
-        /* Ukrywa dolną stopkę (Created by...) */
-        footer {display: none !important; visibility: hidden !important;}
+        # --- UKRYWANIE STOPKI (Wszystkie możliwe selektory) ---
+        footer {display: none !important; visibility: hidden !important; height: 0 !important;}
+        [data-testid="stFooter"] {display: none !important; visibility: hidden !important;}
+        footer a {display: none !important;}
         
-        /* Ukrywa czerwony przycisk 'Hosted with Streamlit' */
-        [data-testid="stViewerBadge"] {display: none !important;}
-        .stViewerBadge {display: none !important;}
+        # --- UKRYWANIE PRZYCISKU 'Hosted with Streamlit' / 'Deploy' ---
+        [data-testid="stViewerBadge"] {display: none !important; visibility: hidden !important;}
+        .stViewerBadge {display: none !important; visibility: hidden !important;}
+        .stAppDeployButton {display: none !important; visibility: hidden !important;}
+        
+        # --- CZYSZCZENIE POZOSTAŁEGO PO STOPCE MARGINESU ---
+        .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important;}
         """
+        
     if ukryj_sidebar:
         style += """
         /* Ukrywa boczny pasek menu */
