@@ -18,7 +18,7 @@ def get_db():
 db = get_db()
 
 # --- 2. FUNKCJE POMOCNICZE WIZUALNE I LOGICZNE ---
-def ustaw_czysty_interfejs(ukryj_sidebar=False):
+def ustaw_czysty_interfejs(ukryj_sidebar=true):
     """Bezpieczna funkcja do wycinania stopki i przycisków hostingu"""
     style = """
         <style>
