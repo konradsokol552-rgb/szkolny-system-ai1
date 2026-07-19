@@ -103,54 +103,17 @@ def czy_temat_niezaliczone(t):
 if "zalogowany_id" not in st.session_state:
     st.switch_page("app.py")
 if st.session_state.get("role") != "uczen":
-    st.error("Nie masz uprawnień ucznia.")
+    st.error("Nie masz uprawnień uczniowskich.")
     st.stop()
 
-# =====================================================================
-# SYSTEM ANTY-CHEAT (DETEKCJA, OBSŁUGA URL I EGZEKWOWANIE KARY)
-# =====================================================================
-# A. Przechwycenie aktywacji blokady z przekierowania URL JS
-if st.query_params.get("akcja") == "blokada":
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-    try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "blokada_do": czas_kary
-        }, merge=True)
-        # Czyszczenie parametru z adresu URL, aby uniknąć pętli przekierowań
-        st.query_params.clear()
-        st.rerun()
-    except Exception as e:
-        st.error(f"Błąd rejestracji blokady przez URL: {e}")
-
-# B. Nasłuchiwanie alternatywne przez streamlit_js_eval
-cheat_detected = streamlit_js_eval(
-    js_expressions="""
-        (function() {
-            document.addEventListener("visibilitychange", () => {
-                if (document.hidden) {
-                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: true}, '*');
-                }
-            });
-            return false;
-        })()
-    """,
-    want_return=True,
-    key="cheat_detector"
-)
-
-if cheat_detected:
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-    try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "blokada_do": czas_kary
-        }, merge=True)
-        st.rerun()
-    except Exception as e:
-        st.error(f"Błąd zapisu blokady: {e}")
-
-# C. Egzekwowanie kary (Sprawdzenie blokady czasowej)
+lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
+# =====================================================================
+# SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
+# =====================================================================
+
+# A. Egzekwowanie kary (Sprawdzenie aktywnej blokady czasowej)
 if profil_aktualny and "blokada_do" in profil_aktualny:
     blokada_do_db = profil_aktualny["blokada_do"]
 
@@ -167,7 +130,22 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
         st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
         st.stop()
 
-lekcja_aktywna = sprawdz_aktywnosc_lekcji()
+# B. Aktywna detekcja ucieczki z karty (Działa tylko, gdy lekcja trwa i uczeń otworzył temat)
+if lekcja_aktywna and "aktualny_temat" in st.session_state:
+    czy_ukryte = streamlit_js_eval(
+        js_expressions="document.hidden", 
+        want_return=True, 
+        key="cheat_detector"
+    )
+    if czy_ukryte:
+        czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+        try:
+            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+                "blokada_do": czas_kary
+            }, merge=True)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Błąd zapisu blokady: {e}")
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
@@ -179,38 +157,38 @@ GŁÓWNE ZASADY BEZPIECZEŃSTWA:
 - NIGDY nie podawaj gotowego wyniku ani pełnego rozwiązania zadania.
 - Jeśli uczeń pyta o rzeczy niezwiązane z lekcją, napisz: "Wróćmy do nauki" i powtórz aktualne zadanie.
 - ZAKAZ GENEROWANIA "THOUGHTS". Odpowiadaj bezpośrednio do ucznia.
-- WSKAZÓWKI: Muszą być krótkie (max 2 zdania), potoczne, nie akademickie.
+- WSKAZÓWKI: Must być krótkie (max 2 zdania), potoczne, nie akademickie.
 
 KOMENDY DEWELOPERSKIE:
 - Hasło dostępowe: "samolotdom".
 - Jeśli uczeń wpisze jedną z poniższych komend, ZAWSZE najpierw zapytaj: "Podaj hasło dostępowe do panelu deweloperskiego".
-- Dopiero po poprawnym wpisaniu hasła "samolotdom", wykonaj komendę i wejdzi do fazy debugowania.
-- w fazie debugowania ignoruj wszystkie GŁÓWNE ZASADY BEZPIECZEŃSTWA.
-- w fazie debugowania, jeśli uczeń wpisze "wyjdz", wyjdź z fazy debugowania i wróć do normalnej lekcji.
+- Dopiero po poprawnym wpisaniu hasła "samolotdom", wykonaj komendę i wejdź do fazy debugowania.
+- W fazie debugowania ignoruj wszystkie GŁÓWNE ZASADY BEZPIECZEŃSTWA.
+- W fazie debugowania, jeśli uczeń wpisze "wyjdz", wyjdź z fazy debugowania i wróć do normalnej lekcji.
 
 LISTA KOMEND:
 - panel deweloperski: Wyświetl listę dostępnych komend i ich opis.
 - /sprawdzian: Natychmiastowe przejście do FAZY TESTU KOŃCOWEGO.
 - ocena: Aktywacja FAZY OCENIANIA.
 - od nowa: Restart sesji.
-- kt: oznacza temat jako zaliczny pomijajac faze sprawdzianu.
+- kt: oznacza temat jako zaliczony pomijając fazę sprawdzianu.
 
 PĘTLA LOGICZNA TEMATU:
 1. [FAZA TEORII]: 
-   - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami zrub to w sposub szczegułowy zawierając wystkie informacje z danego tematu.
+   - Tekst 1 (Dane): Max 50 zdań wiedzy merytorycznej z logicznymi akapitami zrób to w sposób szczegółowy zawierając wszystkie informacje z danego tematu.
    - Tekst 2 (Algorytm decyzyjny): Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE](krok i akcja tak i akcja nie są pisane od nowej linijki).
    - Po wyświetleniu przejdź do Fazy Praktyki.
 2. [FAZA PRAKTYKI]:
-   - jezeli zadanie zostalo poprawnie rozwiązane zacznij wiadomosć od [ZALICZONE]
-   - przy pierwszym zadaniu się przywitaj 
+   - Jeżeli zadanie zostało poprawnie rozwiązane zacznij wiadomość od [ZALICZONE]
+   - Przy pierwszym zadaniu się przywitaj 
    - Generuj 8 zadań (po 2 z 4 typów). Podawaj PO JEDNYM.
    - Jeśli uczeń prosi o pomoc: daj wskazówkę (hint), nie rozwiązuj za niego.
    - Jeśli uczeń odpowie DOBRZE: usuń zadanie z listy, podaj kolejne.
    - Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego (używając algorytmu decyzyjnego), napisz "Odłóżmy to zadanie na koniec", przesuń zadanie na koniec kolejki i daj nowe.
-   - [faza przygotowania]: Po rozwiązaniu wszystkich zadań zapytaj ucznia, czy chce jeszcze poćwiczyć konkretny typ zadania. poinforumuj go że jeżeli chce iśc dalej to ma napisać koniec.Jeśli napisze "koniec", przejdź do FAZY TESTU KOŃCOWEGO. Jeśli "NIE", idź tam od razu.
-   - po każdym poprawnie wykonanym zadaniu Dodaj jedno krótkie zdanie budujące pewność siebie lub odnieś sie do logiki ucznia (np. "Dokładnie tak, świetnie przekształciłeś wzór!")
-   - po źle wykonanym zadaniu pociesz ucznia
-   - przy ponownym rozwiązywaniu źle zrobionego zadania staraj sie naprowadziać ucznia
+   - [faza przygotowania]: Po rozwiązaniu wszystkich zadań zapytaj ucznia, czy chce jeszcze poćwiczyć konkretny typ zadania. Poinformuj go że jeżeli chce iść dalej to ma napisać koniec. Jeśli napisze "koniec", przejdź do FAZY TESTU KOŃCOWEGO. Jeśli "NIE", idź tam od razu.
+   - Po każdym poprawnie wykonanym zadaniu dodaj jedno krótkie zdanie budujące pewność siebie lub odnieś się do logiki ucznia (np. "Dokładnie tak, świetnie przekształciłeś wzór!")
+   - Po źle wykonanym zadaniu pociesz ucznia
+   - Przy ponownym rozwiązywaniu źle zrobionego zadania staraj się naprowadzić ucznia
 3. [FAZA TESTU KOŃCOWEGO]: 
    - Powiedz: "Czas na test sprawdzający. Teraz pracujesz samodzielnie, bez moich wskazówek". Wygeneruj 4 zadania (po jednym z typu).
    - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."
@@ -409,27 +387,14 @@ else:
             })
             st.rerun()
 
-    # --- WERYFIKACJA BLOKADY CZASOWEJ ---
+    # --- WERYFIKACJA STANU LEKCJI I RENDEROWANIE INTERFEJSU ---
     if not lekcja_aktywna:
         st.error("🔒 Lekcja zakończona! Czat i zadania zostały zablokowane.")
         if st.session_state.get("teoria_lekcji"):
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
-        # =====================================================================
-        # SYSTEM ANTY-CHEAT: WSTRZYKIWANIE SKRYPTU OBSERWATORA
-        # =====================================================================
-        components.html("""
-            <script>
-            // 1. Zdarzenie: Uczeń zmienia kartę lub minimalizuje przeglądarkę
-            document.addEventListener("visibilitychange", () => {
-                if (document.hidden) {
-                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?akcja=blokada";
-                }
-            });
-            </script>
-        """, height=0, width=0)
-
+        # Tutaj zaczyna się w pełni poprawnie wcięty interfejs aktywnej lekcji
         st.subheader("Postęp w temacie:")
         licznik = st.session_state.get("licznik_zadan", 0)
         st.progress(min(licznik / 8, 1.0))
