@@ -8,6 +8,43 @@ from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
 from streamlit_js_eval import streamlit_js_eval
 
+if "js_listener_set" not in st.session_state:
+    st.html("""
+    <script>
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                localStorage.setItem('cheat_detected', 'true');
+            }
+        });
+    </script>
+    """)
+    st.session_state.js_listener_set = True
+
+# 2. Most: Pobieramy wartość z JS do Pythona
+# streamlit_js_eval zwraca wartość do zmiennej w Pythonie
+cheat_val = streamlit_js_eval(
+    js_expressions="localStorage.getItem('cheat_detected')",
+    key="cheat_check"
+)
+
+# 3. Logika egzekwowania
+if cheat_val == 'true':
+    # A. Zapisujemy karę w bazie danych
+    if "zalogowany_id" in st.session_state:
+        # Twój kod do Firestore:
+        # db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({"blokada_do": ...})
+        pass
+    
+    # B. Czyścimy localStorage z poziomu JS, żeby nie czytać tego w kółko
+    streamlit_js_eval(js_expressions="localStorage.removeItem('cheat_detected')")
+    
+    # C. Wymuszamy Rerun, żeby użytkownik zobaczył komunikat o blokadzie
+    st.rerun()
+
+# 4. Jeśli użytkownik jest zablokowany, zablokuj dostęp (to co miałeś wcześniej)
+if profil_aktualny and profil_aktualny.get("blokada_do") and profil_aktualny["blokada_do"] > datetime.now(STREFA_PL):
+    st.error("🚨 WYKRYTO OPUSZCZENIE KARTY! 🚨")
+    st.stop()
 # --- STAŁE ---
 STREFA_PL = ZoneInfo("Europe/Warsaw")
 COL_UCZNIOWIE = "postepy_uczniow"
