@@ -3,9 +3,10 @@ import requests
 from google.oauth2 import service_account
 from google.cloud import firestore
 import pandas as pd
-from datetime import datetime, timedelta  # [NOWE] Dodano timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-import streamlit.components.v1 as components  # [NOWE] Do wstrzykiwania kodu JS
+import streamlit.components.v1 as components
+from streamlit_js_eval import streamlit_js_eval
 
 # --- STAŁE ---
 STREFA_PL = ZoneInfo("Europe/Warsaw")
@@ -13,13 +14,6 @@ COL_UCZNIOWIE = "postepy_uczniow"
 COL_PRZEDMIOTY = "przedmioty"
 COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
-
-# --- STRAŻNIK ---
-if "zalogowany_id" not in st.session_state:
-    st.switch_page("app.py")
-if st.session_state.get("role") != "uczen":
-    st.error("Nie masz uprawnień ucznia.")
-    st.stop()
 
 # =====================================================================
 # POŁĄCZENIE Z BAZĄ DANYCH (ZCACHEOWANE)
@@ -37,53 +31,8 @@ def get_db():
 db = get_db()
 
 # =====================================================================
-# [NOWE] SYSTEM ANTY-CHEAT: ZAPISYWANIE KARY Z URL
+# FUNKCJE POMOCNICZE I BAZODANOWE
 # =====================================================================
-# Sprawdzamy, czy JS wstrzyknął flagę ucieczki do URL
-if st.query_params.get("akcja") == "blokada":
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-    
-    # Aktualizacja bazy Firestore o karę
-    try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "blokada_do": czas_kary
-        }, merge=True)
-    except Exception as e:
-        st.error(f"Błąd zapisu blokady: {e}")
-        
-    # Czyścimy URL, żeby nie wejść w pętlę i przeładowujemy
-    st.query_params.clear()
-    st.rerun()
-
-# --- SPRAWDZENIE BLOKADY CZASOWEJ LEKCJI ---
-def sprawdz_aktywnosc_lekcji():
-    try:
-        status_lekcji = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
-        if status_lekcji.exists:
-            godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
-            if godzina_blokady_str:
-                godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
-                return datetime.now(STREFA_PL) < godzina_blokady
-    except Exception:
-        pass
-    return False
-
-lekcja_aktywna = sprawdz_aktywnosc_lekcji()
-
-# --- POBIERANIE STRUKTURY PROGRAMU (ZCACHEOWANE NA 5 MINUT) ---
-@st.cache_data(ttl=300)
-def pobierz_strukture():
-    try:
-        docs = db.collection(COL_PRZEDMIOTY).stream()
-        struktura = {}
-        for doc in docs:
-            dane = doc.to_dict().get("lista_tematow", [])
-            struktura[doc.id] = dane if isinstance(dane, list) else [str(dane)]
-        return struktura
-    except Exception as e:
-        st.error(f"Błąd struktury: {e}")
-        return {}
-
 def wczytaj_profil_z_chmury(identyfikator):
     try:
         doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
@@ -91,28 +40,6 @@ def wczytaj_profil_z_chmury(identyfikator):
     except Exception as e:
         st.error(f"Nie udało się wczytać profilu: {e}")
         return None
-
-# =====================================================================
-# [NOWE] SYSTEM ANTY-CHEAT: EGZEKWOWANIE KARY 
-# =====================================================================
-profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-
-if profil_aktualny and "blokada_do" in profil_aktualny:
-    blokada_do_db = profil_aktualny["blokada_do"]
-    
-    # Konwersja czasu z Firestore (może być Timestamp lub string)
-    if isinstance(blokada_do_db, datetime):
-        czas_blokady = blokada_do_db.replace(tzinfo=STREFA_PL) if blokada_do_db.tzinfo is None else blokada_do_db
-    elif hasattr(blokada_do_db, 'timestamp'):
-        czas_blokady = datetime.fromtimestamp(blokada_do_db.timestamp(), tz=STREFA_PL)
-    else:
-        czas_blokady = datetime.now(STREFA_PL) - timedelta(minutes=1) # Fallback, by zignorować błędny format
-        
-    if datetime.now(STREFA_PL) < czas_blokady:
-        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY EGZAMINACYJNEJ! 🚨")
-        st.warning(f"Ze względów bezpieczeństwa Twoje konto zostało zablokowane do godziny: **{czas_blokady.strftime('%H:%M:%S')}**.")
-        st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
-        st.stop() # Twarde zatrzymanie renderowania reszty aplikacji
 
 def zapisz_profil_w_chmurze():
     identyfikator = st.session_state.zalogowany_id
@@ -142,10 +69,105 @@ def zapisz_profil_w_chmurze():
     except Exception as e:
         st.error(f"Błąd zapisu danych: {e}")
 
+def sprawdz_aktywnosc_lekcji():
+    try:
+        status_lekcji = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
+        if status_lekcji.exists:
+            godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
+            if godzina_blokady_str:
+                godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
+                return datetime.now(STREFA_PL) < godzina_blokady
+    except Exception:
+        pass
+    return False
+
+@st.cache_data(ttl=300)
+def pobierz_strukture():
+    try:
+        docs = db.collection(COL_PRZEDMIOTY).stream()
+        struktura = {}
+        for doc in docs:
+            dane = doc.to_dict().get("lista_tematow", [])
+            struktura[doc.id] = dane if isinstance(dane, list) else [str(dane)]
+        return struktura
+    except Exception as e:
+        st.error(f"Błąd struktury: {e}")
+        return {}
+
 def czy_temat_niezaliczone(t):
     dane = st.session_state.get("postep_tematow", {}).get(t, "Nie rozpoczęte")
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
+
+# --- STRAŻNIK DOSTĘPU ---
+if "zalogowany_id" not in st.session_state:
+    st.switch_page("app.py")
+if st.session_state.get("role") != "uczen":
+    st.error("Nie masz uprawnień ucznia.")
+    st.stop()
+
+# =====================================================================
+# SYSTEM ANTY-CHEAT (DETEKCJA, OBSŁUGA URL I EGZEKWOWANIE KARY)
+# =====================================================================
+# A. Przechwycenie aktywacji blokady z przekierowania URL JS
+if st.query_params.get("akcja") == "blokada":
+    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+    try:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "blokada_do": czas_kary
+        }, merge=True)
+        # Czyszczenie parametru z adresu URL, aby uniknąć pętli przekierowań
+        st.query_params.clear()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Błąd rejestracji blokady przez URL: {e}")
+
+# B. Nasłuchiwanie alternatywne przez streamlit_js_eval
+cheat_detected = streamlit_js_eval(
+    js_expressions="""
+        (function() {
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) {
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: true}, '*');
+                }
+            });
+            return false;
+        })()
+    """,
+    want_return=True,
+    key="cheat_detector"
+)
+
+if cheat_detected:
+    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+    try:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "blokada_do": czas_kary
+        }, merge=True)
+        st.rerun()
+    except Exception as e:
+        st.error(f"Błąd zapisu blokady: {e}")
+
+# C. Egzekwowanie kary (Sprawdzenie blokady czasowej)
+profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+
+if profil_aktualny and "blokada_do" in profil_aktualny:
+    blokada_do_db = profil_aktualny["blokada_do"]
+
+    if isinstance(blokada_do_db, datetime):
+        czas_blokady = blokada_do_db.replace(tzinfo=STREFA_PL) if blokada_do_db.tzinfo is None else blokada_do_db
+    elif hasattr(blokada_do_db, 'timestamp'):
+        czas_blokady = datetime.fromtimestamp(blokada_do_db.timestamp(), tz=STREFA_PL)
+    else:
+        czas_blokady = datetime.now(STREFA_PL) - timedelta(minutes=1)
+
+    if datetime.now(STREFA_PL) < czas_blokady:
+        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY EGZAMINACYJNEJ! 🚨")
+        st.warning(f"Ze względów bezpieczeństwa Twoje konto zostało zablokowane do godziny: **{czas_blokady.strftime('%H:%M:%S')}**.")
+        st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
+        st.stop()
+
+lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
@@ -395,8 +417,7 @@ else:
                 st.markdown(st.session_state.teoria_lekcji)
     else:
         # =====================================================================
-        # [NOWE] SYSTEM ANTY-CHEAT: WSTRZYKIWANIE SKRYPTU OBSERWATORA
-        # Wstrzykujemy kod JS tylko wtedy, gdy uczeń faktycznie ma otwartą aktywną lekcję.
+        # SYSTEM ANTY-CHEAT: WSTRZYKIWANIE SKRYPTU OBSERWATORA
         # =====================================================================
         components.html("""
             <script>
@@ -406,14 +427,6 @@ else:
                     window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?akcja=blokada";
                 }
             });
-            
-            // 2. Zdarzenie: Utrata ostrości (np. kliknięcie na pasek Windowsa, notatnik itp.)
-            // UWAGA: To jest bardzo agresywne. Odkomentuj, jeśli chcesz bezwzględnej blokady kliknięć poza Chrome.
-            /*
-            window.parent.addEventListener("blur", () => {
-                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?akcja=blokada";
-            });
-            */
             </script>
         """, height=0, width=0)
 

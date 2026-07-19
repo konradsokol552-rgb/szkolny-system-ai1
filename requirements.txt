@@ -3,3 +3,4 @@ google-cloud-firestore
 pandas
 requests
 streamlit-autorefresh
+streamlit_js_eval
