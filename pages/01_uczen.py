@@ -8,44 +8,9 @@ from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
 from streamlit_js_eval import streamlit_js_eval
 
-if "js_listener_set" not in st.session_state:
-    st.html("""
-    <script>
-        document.addEventListener("visibilitychange", function() {
-            if (document.hidden) {
-                localStorage.setItem('cheat_detected', 'true');
-            }
-        });
-    </script>
-    """)
-    st.session_state.js_listener_set = True
-
-# 2. Most: Pobieramy wartość z JS do Pythona
-# streamlit_js_eval zwraca wartość do zmiennej w Pythonie
-cheat_val = streamlit_js_eval(
-    js_expressions="localStorage.getItem('cheat_detected')",
-    key="cheat_check"
-)
-
-# 3. Logika egzekwowania
-if cheat_val == 'true':
-    # A. Zapisujemy karę w bazie danych
-    if "zalogowany_id" in st.session_state:
-        # Twój kod do Firestore:
-        # db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({"blokada_do": ...})
-        pass
-    
-    # B. Czyścimy localStorage z poziomu JS, żeby nie czytać tego w kółko
-    streamlit_js_eval(js_expressions="localStorage.removeItem('cheat_detected')")
-    
-    # C. Wymuszamy Rerun, żeby użytkownik zobaczył komunikat o blokadzie
-    st.rerun()
-
-# 4. Jeśli użytkownik jest zablokowany, zablokuj dostęp (to co miałeś wcześniej)
-if profil_aktualny and profil_aktualny.get("blokada_do") and profil_aktualny["blokada_do"] > datetime.now(STREFA_PL):
-    st.error("🚨 WYKRYTO OPUSZCZENIE KARTY! 🚨")
-    st.stop()
-# --- STAŁE ---
+# =====================================================================
+# 1. STAŁE (Muszą być załadowane jako pierwsze)
+# =====================================================================
 STREFA_PL = ZoneInfo("Europe/Warsaw")
 COL_UCZNIOWIE = "postepy_uczniow"
 COL_PRZEDMIOTY = "przedmioty"
@@ -53,7 +18,7 @@ COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
 
 # =====================================================================
-# POŁĄCZENIE Z BAZĄ DANYCH (ZCACHEOWANE)
+# 2. POŁĄCZENIE Z BAZĄ DANYCH I FUNKCJE BAZODANOWE
 # =====================================================================
 @st.cache_resource
 def get_db():
@@ -67,9 +32,6 @@ def get_db():
 
 db = get_db()
 
-# =====================================================================
-# FUNKCJE POMOCNICZE I BAZODANOWE
-# =====================================================================
 def wczytaj_profil_z_chmury(identyfikator):
     try:
         doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
@@ -77,34 +39,6 @@ def wczytaj_profil_z_chmury(identyfikator):
     except Exception as e:
         st.error(f"Nie udało się wczytać profilu: {e}")
         return None
-
-def zapisz_profil_w_chmurze():
-    identyfikator = st.session_state.zalogowany_id
-    postepy = st.session_state.get("postep_tematow", {})
-    historia = st.session_state.get("historia_czatow", {})
-    
-    if not isinstance(historia, dict):
-        historia = {}
-        
-    if "aktualny_temat" in st.session_state:
-        temat = st.session_state.aktualny_temat
-        licznik = st.session_state.get("licznik_zadan", 0)
-        
-        if not isinstance(postepy.get(temat), dict):
-            postepy[temat] = {"status": postepy.get(temat, "W trakcie")}
-        postepy[temat]["licznik"] = licznik
-        st.session_state.postep_tematow = postepy
-
-    dane_do_zapisu = {
-        "user_api_key": st.session_state.get("user_api_key", ""),
-        "postep_tematow": postepy,
-        "historia_czatow": historia,
-        "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
-    }
-    try:
-        db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
-    except Exception as e:
-        st.error(f"Błąd zapisu danych: {e}")
 
 def sprawdz_aktywnosc_lekcji():
     try:
@@ -136,48 +70,99 @@ def czy_temat_niezaliczone(t):
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
 
-# --- STRAŻNIK DOSTĘPU ---
+# =====================================================================
+# 3. STRAŻNIK DOSTĘPU I INICJALIZACJA PROFILU
+# =====================================================================
 if "zalogowany_id" not in st.session_state:
     st.switch_page("app.py")
 if st.session_state.get("role") != "uczen":
     st.error("Nie masz uprawnień uczniowskich.")
     st.stop()
 
+# Pobieramy profil, zanim użyje go anty-cheat!
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
-# === NOWOŚĆ: Przechwytywanie sygnału oszustwa z adresu URL ===
-if st.query_params.get("cheat") == "true":
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
-    try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "blokada_do": czas_kary
-        }, merge=True)
-        # Czyszczenie parametrów z URL, aby system nie zapętlił się po odblokowaniu konta
-        st.query_params.clear()
-        st.rerun()
-    except Exception as e:
-        st.error(f"Błąd zapisu blokady: {e}")
-
 # =====================================================================
-# SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
+# 4. SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
+if "js_listener_set" not in st.session_state:
+    st.html("""
+    <script>
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                localStorage.setItem('cheat_detected', 'true');
+            }
+        });
+    </script>
+    """)
+    st.session_state.js_listener_set = True
 
-st.html("""
-<script>
-    alert("Anty-cheat załadowany!"); 
+cheat_val = streamlit_js_eval(
+    js_expressions="localStorage.getItem('cheat_detected')",
+    key="cheat_check"
+)
+
+if cheat_val == 'true':
+    if "zalogowany_id" in st.session_state:
+        czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+        try:
+            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set(
+                {"blokada_do": czas_kary}, merge=True
+            )
+        except Exception as e:
+            st.error(f"Błąd zapisu blokady: {e}")
+            
+    streamlit_js_eval(js_expressions="localStorage.removeItem('cheat_detected')")
+    st.rerun()
+
+# Sprawdzanie, czy w załadowanym przed chwilą profilu widnieje aktywna blokada
+if profil_aktualny and profil_aktualny.get("blokada_do"):
+    blokada = profil_aktualny["blokada_do"]
     
-    window.addEventListener("blur", function() {
-        alert("Utracono fokus!");
-    });
-</script>
-""")
+    # Naprawa dla obiektów typu Datetime vs Timestamp z Firestore
+    if isinstance(blokada, datetime):
+        czas_blokady = blokada
+    else:
+        czas_blokady = blokada.replace(tzinfo=STREFA_PL) 
+        
+    if czas_blokady > datetime.now(STREFA_PL):
+        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY! 🚨")
+        st.warning(f"Twoje konto zostało zablokowane do: {czas_blokady.strftime('%H:%M:%S')}")
+        st.stop()
 
-# 2. MECHANIZM EGZEKWOWANIA (PYTHON)
-# Czy Python w ogóle widzi ten parametr?
-if st.query_params.get("cheat") == "true":
-    st.error("DEBUG: Python odebrał sygnał 'cheat=true'!") # To musi się pokazać!
-    st.stop() # Zatrzymujemy tutaj, żebyś zobaczył ten komunikat
+# =====================================================================
+# FUNKCJA ZAPISU PROFILU (Musi być pod zdefiniowaniem zmiennych)
+# =====================================================================
+def zapisz_profil_w_chmurze():
+    identyfikator = st.session_state.zalogowany_id
+    postepy = st.session_state.get("postep_tematow", {})
+    historia = st.session_state.get("historia_czatow", {})
+    
+    if not isinstance(historia, dict):
+        historia = {}
+        
+    if "aktualny_temat" in st.session_state:
+        temat = st.session_state.aktualny_temat
+        licznik = st.session_state.get("licznik_zadan", 0)
+        
+        if not isinstance(postepy.get(temat), dict):
+            postepy[temat] = {"status": postepy.get(temat, "W trakcie")}
+        postepy[temat]["licznik"] = licznik
+        st.session_state.postep_tematow = postepy
+
+    dane_do_zapisu = {
+        "user_api_key": st.session_state.get("user_api_key", ""),
+        "postep_tematow": postepy,
+        "historia_czatow": historia,
+        "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
+    }
+    try:
+        db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
+    except Exception as e:
+        st.error(f"Błąd zapisu danych: {e}")
+
+# [TUTAJ ZACZYNA SIĘ SYSTEM_PROMPT I RESZTA KODU...]
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
