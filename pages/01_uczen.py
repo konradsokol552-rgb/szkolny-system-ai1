@@ -128,15 +128,10 @@ if st.query_params.get("cheat") == "true":
 
 st.html("""
 <script>
-    console.log("Anty-cheat: Skrypt załadowany!"); // Sprawdź, czy to widzisz w konsoli!
+    alert("Anty-cheat załadowany!"); 
     
-    document.addEventListener("visibilitychange", function() {
-        if (document.hidden) {
-            console.log("Anty-cheat: Wykryto ucieczkę, próbuję przeładować URL...");
-            const url = new URL(window.location.href);
-            url.searchParams.set('cheat', 'true');
-            window.location.href = url.toString();
-        }
+    window.addEventListener("blur", function() {
+        alert("Utracono fokus!");
     });
 </script>
 """)
