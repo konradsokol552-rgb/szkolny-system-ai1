@@ -147,34 +147,29 @@ if profil_aktualny and "blokada_do" in profil_aktualny:
 st.write(f"DEBUG: Czy lekcja aktywna? {lekcja_aktywna}")
 st.write(f"DEBUG: Czy aktualny temat istnieje? {'aktualny_temat' in st.session_state}")
 if lekcja_aktywna and "aktualny_temat" in st.session_state:
-    components.html("""
-        <script>
-            console.log("Anty-cheat: Skrypt załadowany poprawnie.");
-            
-            function zglosOszustwo() {
-                console.log("Anty-cheat: Wykryto zmianę karty/focusa!");
-                
-                // Używamy window.location.href zamiast window.parent.location.href
-                // To jest bezpieczniejsze – zawsze przeładuje bieżące okno/iframe
-                const url = window.location.origin + window.location.pathname + "?cheat=true";
-                window.location.href = url;
+    
+    # Tworzymy czysty skrypt JS, który używa obiektu URL do bezpiecznej modyfikacji parametrów
+    js_code = """
+    (function() {
+        const detectCheat = function() {
+            if (document.hidden) {
+                const url = new URL(window.location.href);
+                url.searchParams.set('cheat', 'true');
+                window.location.href = url.toString();
             }
+        };
 
-            // 1. Zmiana karty
-            document.addEventListener("visibilitychange", function() {
-                if (document.hidden) {
-                    console.log("Anty-cheat: Karta została ukryta.");
-                    zglosOszustwo();
-                }
-            });
-
-            // 2. Utrata focusu (blur)
-            window.addEventListener("blur", function() {
-                console.log("Anty-cheat: Utracono focus okna.");
-                zglosOszustwo();
-            });
-        </script>
-    """, height=0)
+        document.removeEventListener("visibilitychange", detectCheat);
+        document.addEventListener("visibilitychange", detectCheat);
+        
+        window.removeEventListener("blur", detectCheat);
+        window.addEventListener("blur", detectCheat);
+    })();
+    """
+    
+    # Kluczowe: streamlit_js_eval wywołuje to raz. Używamy 'key', aby JS nie był wstrzykiwany wielokrotnie.
+    # Użyjemy streamlit_js_eval tylko do zarejestrowania event listenerów.
+    streamlit_js_eval(js_expressions=js_code, key="cheat_detection_script")
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
