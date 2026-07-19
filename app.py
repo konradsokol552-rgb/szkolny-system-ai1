@@ -3,7 +3,7 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 
 # --- 1. GLOBALNA KONFIGURACJA (Dla całej aplikacji) ---
-st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="wide")
+st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centered")
 
 # Brutalne wycięcie stopki oraz bocznego menu za pomocą CSS
 st.markdown("""
