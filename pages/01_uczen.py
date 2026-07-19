@@ -3,8 +3,9 @@ import requests
 from google.oauth2 import service_account
 from google.cloud import firestore
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta  # [NOWE] Dodano timedelta
 from zoneinfo import ZoneInfo
+import streamlit.components.v1 as components  # [NOWE] Do wstrzykiwania kodu JS
 
 # --- STAŁE ---
 STREFA_PL = ZoneInfo("Europe/Warsaw")
@@ -35,14 +36,32 @@ def get_db():
 
 db = get_db()
 
-# --- SPRAWDZENIE BLOKADY CZASOWEJ (Z JEDNOLITĄ STREFĄ CZASOWĄ) ---
+# =====================================================================
+# [NOWE] SYSTEM ANTY-CHEAT: ZAPISYWANIE KARY Z URL
+# =====================================================================
+# Sprawdzamy, czy JS wstrzyknął flagę ucieczki do URL
+if st.query_params.get("akcja") == "blokada":
+    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+    
+    # Aktualizacja bazy Firestore o karę
+    try:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "blokada_do": czas_kary
+        }, merge=True)
+    except Exception as e:
+        st.error(f"Błąd zapisu blokady: {e}")
+        
+    # Czyścimy URL, żeby nie wejść w pętlę i przeładowujemy
+    st.query_params.clear()
+    st.rerun()
+
+# --- SPRAWDZENIE BLOKADY CZASOWEJ LEKCJI ---
 def sprawdz_aktywnosc_lekcji():
     try:
         status_lekcji = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
         if status_lekcji.exists:
             godzina_blokady_str = status_lekcji.to_dict().get("godzina_blokady")
             if godzina_blokady_str:
-                # Zamieniamy czas z bazy na obiekt świadomy strefy czasowej
                 godzina_blokady = datetime.strptime(godzina_blokady_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
                 return datetime.now(STREFA_PL) < godzina_blokady
     except Exception:
@@ -72,6 +91,28 @@ def wczytaj_profil_z_chmury(identyfikator):
     except Exception as e:
         st.error(f"Nie udało się wczytać profilu: {e}")
         return None
+
+# =====================================================================
+# [NOWE] SYSTEM ANTY-CHEAT: EGZEKWOWANIE KARY 
+# =====================================================================
+profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+
+if profil_aktualny and "blokada_do" in profil_aktualny:
+    blokada_do_db = profil_aktualny["blokada_do"]
+    
+    # Konwersja czasu z Firestore (może być Timestamp lub string)
+    if isinstance(blokada_do_db, datetime):
+        czas_blokady = blokada_do_db.replace(tzinfo=STREFA_PL) if blokada_do_db.tzinfo is None else blokada_do_db
+    elif hasattr(blokada_do_db, 'timestamp'):
+        czas_blokady = datetime.fromtimestamp(blokada_do_db.timestamp(), tz=STREFA_PL)
+    else:
+        czas_blokady = datetime.now(STREFA_PL) - timedelta(minutes=1) # Fallback, by zignorować błędny format
+        
+    if datetime.now(STREFA_PL) < czas_blokady:
+        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY EGZAMINACYJNEJ! 🚨")
+        st.warning(f"Ze względów bezpieczeństwa Twoje konto zostało zablokowane do godziny: **{czas_blokady.strftime('%H:%M:%S')}**.")
+        st.info("Zgłoś się do nauczyciela, jeśli uważasz, że to błąd systemu.")
+        st.stop() # Twarde zatrzymanie renderowania reszty aplikacji
 
 def zapisz_profil_w_chmurze():
     identyfikator = st.session_state.zalogowany_id
@@ -252,16 +293,15 @@ with st.sidebar:
                 st.error("Nauczyciel nie aktywował jeszcze lekcji.")
             else:
                 st.session_state.aktualny_temat = wybor_tematu
-                profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
                 
-                if profil and isinstance(profil, dict):
-                    st.session_state.teorie_lekcji = profil.get("teorie_lekcji", {})
+                if profil_aktualny and isinstance(profil_aktualny, dict):
+                    st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {})
                     st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu)
                     
-                    stan_tematu = profil.get("postep_tematow", {}).get(wybor_tematu)
+                    stan_tematu = profil_aktualny.get("postep_tematow", {}).get(wybor_tematu)
                     st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
                     
-                    historia = profil.get("historia_czatow", {})
+                    historia = profil_aktualny.get("historia_czatow", {})
                     st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
                 else:
                     st.session_state.teoria_lekcji = None
@@ -320,7 +360,6 @@ else:
     st.caption(f"📖 Temat: {st.session_state.aktualny_temat}")
     
     # --- DWUKIERUNKOWY PRZYCISK POMOCY (SOS) ---
-    profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
     stan_pomocy = profil_aktualny.get("potrzebuje_pomocy", False) if profil_aktualny else False
 
     if stan_pomocy:
@@ -333,8 +372,7 @@ else:
     else:
         if st.button("🚨 WEZWIJ NAUCZYCIELA DO POMOCY", use_container_width=True):
             temat = st.session_state.aktualny_temat
-            profil = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
-            postepy = profil.get("postep_tematow", {}) if profil else {}
+            postepy = profil_aktualny.get("postep_tematow", {}) if profil_aktualny else {}
             
             if temat not in postepy:
                 postepy[temat] = {"status": "W trakcie", "licznik_sos": 0}
@@ -356,6 +394,29 @@ else:
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
+        # =====================================================================
+        # [NOWE] SYSTEM ANTY-CHEAT: WSTRZYKIWANIE SKRYPTU OBSERWATORA
+        # Wstrzykujemy kod JS tylko wtedy, gdy uczeń faktycznie ma otwartą aktywną lekcję.
+        # =====================================================================
+        components.html("""
+            <script>
+            // 1. Zdarzenie: Uczeń zmienia kartę lub minimalizuje przeglądarkę
+            document.addEventListener("visibilitychange", () => {
+                if (document.hidden) {
+                    window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?akcja=blokada";
+                }
+            });
+            
+            // 2. Zdarzenie: Utrata ostrości (np. kliknięcie na pasek Windowsa, notatnik itp.)
+            // UWAGA: To jest bardzo agresywne. Odkomentuj, jeśli chcesz bezwzględnej blokady kliknięć poza Chrome.
+            /*
+            window.parent.addEventListener("blur", () => {
+                window.parent.location.href = window.parent.location.origin + window.parent.location.pathname + "?akcja=blokada";
+            });
+            */
+            </script>
+        """, height=0, width=0)
+
         st.subheader("Postęp w temacie:")
         licznik = st.session_state.get("licznik_zadan", 0)
         st.progress(min(licznik / 8, 1.0))
