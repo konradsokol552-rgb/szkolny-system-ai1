@@ -2,7 +2,20 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 
-# --- 1. STAŁE I BAZA DANYCH (Bezpieczne do importowania w podstronach) ---
+# --- 1. GLOBALNA KONFIGURACJA WIZUALNA ---
+# Stawiamy na samym początku, aby każda podstrona dziedziczyła ukrywanie elementów
+st.markdown("""
+    <style>
+    /* Ukrywa dolną stopkę (Created by...) */
+    footer {display: none !important; visibility: hidden !important;}
+    
+    /* Ukrywa czerwony przycisk 'Hosted with Streamlit' */
+    [data-testid="stViewerBadge"] {display: none !important;}
+    .stViewerBadge {display: none !important;}
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 2. STAŁE I BAZA DANYCH ---
 COL_UCZNIOWIE = "postepy_uczniow"
 HASLO_SYSTEMOWE = "TwojeTajneHaslo123"
 
@@ -15,10 +28,9 @@ def get_db():
     creds = service_account.Credentials.from_service_account_info(key_dict)
     return firestore.Client(credentials=creds, project=key_dict["project_id"])
 
-# Inicjalizacja bazy danych na poziomie globalnym (bezpieczna dzięki st.cache_resource)
 db = get_db()
 
-# --- 2. FUNKCJE POMOCNICZE (Bezpieczne do importowania) ---
+# --- 3. FUNKCJE POMOCNICZE (Bezpieczne do importowania) ---
 def zaloguj_uzytkownika(id_input):
     doc_ref = db.collection(COL_UCZNIOWIE).document(id_input)
     doc = doc_ref.get()
@@ -46,26 +58,13 @@ def stworz_konto(id_input, typ, klucz_api):
     db.collection(COL_UCZNIOWIE).document(id_input).set(nowy_profil)
 
 
-# =============================================================================
-# --- 3. STRAŻNIK INTERFEJSU + KONFIGURACJA WIZUALNA ---
-# Kod w tej sekcji uruchomi się WYŁĄCZNIE, gdy użytkownik wejdzie na główny adres aplikacji.
-# Podczas importowania tego pliku przez podstrony, ta sekcja zostanie całkowicie pominięta.
-# =============================================================================
-if __name__ == "__app__":
-    
-    # Przeniesione tutaj: Konfiguracja strony odpala się TYLKO dla ekranu logowania
+# --- 4. INTERFEJS LOGOWANIA ---
+if __name__ == "__main__":
     st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centered")
 
-    # Przeniesione tutaj: CSS aplikuje się wyłącznie do ekranu głównego logowania
+    # Dodatkowe ukrycie bocznego paska tylko na ekranie logowania
     st.markdown("""
         <style>
-        /* Ukrywa dolną stopkę (Created by...) */
-        footer {visibility: hidden !important;}
-        
-        /* Ukrywa czerwony przycisk 'Hosted with Streamlit' */
-        [data-testid="stViewerBadge"] {display: none !important;}
-        
-        /* Ukrywa boczny pasek menu */
         [data-testid="stSidebar"] {display: none !important;}
         [data-testid="collapsedSidebar"] {display: none !important;}
         </style>
@@ -96,5 +95,6 @@ if __name__ == "__app__":
             elif not id_input or not nowy_klucz_api:
                 st.error("Wypełnij nazwę konta i klucz API!")
             else:
-                st.stworz_konto(id_input, typ_konta, nowy_klucz_api)
+                # NAPRAWIONE: Usunięte "st." przed nazwą funkcji
+                stworz_konto(id_input, typ_konta, nowy_klucz_api)
                 st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
