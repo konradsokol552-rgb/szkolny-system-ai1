@@ -32,26 +32,7 @@ def get_db():
 
 db = get_db()
 
-# --- TWARDY CHECK ANTY-CHEAT (Przed wyrenderowaniem lekcji) ---
-if "zalogowany_id" in st.session_state:
-    user_doc_id = st.session_state.zalogowany_id
-    
-    # Pobieramy najświeższy stan ucznia bezpośrednio z Firestore
-    doc_ref = db.collection(COL_UCZNIOWIE).document(user_doc_id)
-    doc = doc_ref.get()
-    
-    if doc.exists:
-        dane_ucznia = doc.to_dict()
-        
-        # Jeśli baza potwierdza oszustwo -> ZAMYKAMY DOSTĘP
-        if dane_ucznia.get("sygnal_oszustwa", False):
-            st.error("🚫 TEST ZABLOKOWANY")
-            st.warning("Wykryto opuszczenie karty przeglądarki podczas trwania lekcji/sprawdzianu.")
-            st.info("Twój wynik został zamrożony. Skontaktuj się z nauczycielem w celu odblokowania dostępu.")
-            
-            # st.stop() natychmiast przerywa wykonywanie skryptu Pythona!
-            # Żadne pytania, materiały ani przyciski poniżej tej linii się nie wyrenderują.
-            st.stop()
+
 
 def wczytaj_profil_z_chmury(identyfikator):
     try:
