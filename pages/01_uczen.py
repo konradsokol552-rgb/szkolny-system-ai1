@@ -103,7 +103,7 @@ st.markdown("""
         pointer-events: none !important;
     }
 </style>
-""", unsafe_html=True)
+""", unsafe_allow_html=True)
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
