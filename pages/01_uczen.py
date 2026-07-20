@@ -33,7 +33,6 @@ def get_db():
 db = get_db()
 
 
-
 def wczytaj_profil_z_chmury(identyfikator):
     try:
         doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
@@ -91,7 +90,8 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
 # 1. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
 if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
-    czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
+    teraz_pl = datetime.now(STREFA_PL)
+    czas_kary = teraz_pl + timedelta(minutes=45)
     try:
         db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
             "sygnal_oszustwa": False,
@@ -102,17 +102,34 @@ if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
-# 2. BRAMKA LOGICZNA - BLOKADA DOSTĘPU
+# 2. BRAMKA LOGICZNA - BLOKADA DOSTĘPU Z PRZELICZENIEM NA CZAS POLSKI
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
-    czas_blokady = blokada if isinstance(blokada, datetime) else blokada.replace(tzinfo=STREFA_PL) 
+    
+    # Firestore zwraca UTC -> konwertujemy precyzyjnie na Polską Strefę Czasową
+    if isinstance(blokada, datetime):
+        if blokada.tzinfo is None:
+            czas_blokady = blokada.replace(tzinfo=STREFA_PL)
+        else:
+            czas_blokady = blokada.astimezone(STREFA_PL)
+    else:
+        try:
+            czas_blokady = datetime.fromisoformat(str(blokada)).astimezone(STREFA_PL)
+        except Exception:
+            czas_blokady = datetime.now(STREFA_PL)
+
+    teraz = datetime.now(STREFA_PL)
+    
+    if czas_blokady > teraz:
+        roznica_sekund = (czas_blokady - teraz).total_seconds()
+        pozostalo_minut = int(roznica_sekund // 60) + 1
         
-    if czas_blokady > datetime.now(STREFA_PL):
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
-        st.warning(f"Twój dostęp do lekcji został zablokowany do: {czas_blokady.strftime('%H:%M:%S')}")
+        st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
+        st.info(f"⏳ Pozostały czas kary: ok. **{pozostalo_minut} min**.")
         st.stop()
 
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z MOCNYM KEEPALIVE FETCH)
+# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z NATYCHMIASTOWYM PRZEŁADOWANIEM GŁÓWNEGO OKNA)
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -124,6 +141,18 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
+
+        function przeładujAplikacje() {{
+            try {{
+                if (window.parent && window.parent.location) {{
+                    window.parent.location.reload();
+                }} else {{
+                    window.location.reload();
+                }}
+            }} catch (e) {{
+                window.location.reload();
+            }}
+        }}
 
         function zglosOszustwo() {{
             if (oszustwoWyslane) return;
@@ -142,17 +171,26 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
                 headers: {{ "Content-Type": "application/json" }},
                 body: payload,
                 keepalive: true
-            }}).then(() => {{
-                // Przeładowujemy stronę od razu po powrocie
-                window.location.reload();
             }});
         }}
 
-        // Detekcja ukrycia karty
         const targetDoc = window.parent ? window.parent.document : document;
+        const targetWin = window.parent ? window.parent : window;
+
+        // 1. Wykrycie wyjścia z karty -> wysłanie sygnału PATCH
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
+            }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
+                // 2. Powrót na kartę -> NATYCHMIASTOWE PRZEŁADOWANIE APLIKACJI
+                przeładujAplikacje();
+            }}
+        }});
+
+        // Zabezpieczenie na przypadek powrotu fokusu do okna
+        targetWin.addEventListener("focus", function() {{
+            if (oszustwoWyslane) {{
+                przeładujAplikacje();
             }}
         }});
     </script>
@@ -188,8 +226,6 @@ def zapisz_profil_w_chmurze():
         db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
     except Exception as e:
         st.error(f"Błąd zapisu danych: {e}")
-
-# [TUTAJ ZACZYNA SIĘ SYSTEM_PROMPT I RESZTA KODU...]
 
 # =====================================================================
 # LOGIKA AI (SYSTEM PROMPT)
