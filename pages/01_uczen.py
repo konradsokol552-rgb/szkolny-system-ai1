@@ -88,85 +88,58 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 # =====================================================================
 
 # 1. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
-# Jeśli JS zapisał w bazie sygnał oszustwa, Python przetwarza go i zamienia na twardą blokadę czasową
 if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     czas_kary = datetime.now(STREFA_PL) + timedelta(minutes=45)
     try:
-        # Nadpisujemy flagę sygnału i ustawiamy oficjalną godzinę blokady
         db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
             "sygnal_oszustwa": False,
             "blokada_do": czas_kary
         }, merge=True)
-        # Odświeżamy profil w pamięci podręcznej podręcznej sesji
         profil_aktualny["blokada_do"] = czas_kary
         profil_aktualny["sygnal_oszustwa"] = False
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
-# 2. BRAMKA LOGICZNA - WERYFIKACJA BLOKADY
+# 2. BRAMKA LOGICZNA - BLOKADA DOSTĘPU
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
-    
-    # Normalizacja dla obiektów typu Datetime z Firestore vs strefa PL
-    if isinstance(blokada, datetime):
-        czas_blokady = blokada
-    else:
-        czas_blokady = blokada.replace(tzinfo=STREFA_PL) 
+    czas_blokady = blokada if isinstance(blokada, datetime) else blokada.replace(tzinfo=STREFA_PL) 
         
     if czas_blokady > datetime.now(STREFA_PL):
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
         st.warning(f"Twój dostęp do lekcji został zablokowany do: {czas_blokady.strftime('%H:%M:%S')}")
         st.stop()
 
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (BEZPOŚREDNI STRZAŁ DO REST API)
-# Wyciągamy Project ID dynamicznie z sekretów, żeby skrypt JS wiedział, gdzie uderzyć
+# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO ZMIANA KARTY / MINIMALIZACJA)
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
-    project_id = "twoj-projekt-firestore" # fallback
+    project_id = "twoj-projekt-firestore"
 
 if lekcja_aktywna and "zalogowany_id" in st.session_state:
     user_doc_id = st.session_state.zalogowany_id
     
-    st.components.v1.html(f"""
+    components.html(f"""
     <script>
-        function zglosOszustwoDoFirestore() {{
+        function zglosOszustwo() {{
+            // Używamy natywnego pingu Beacon lub Fetch z ignorowaniem odpowiedzi
             const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
             
-            const payload = {{
+            const payload = JSON.stringify({{
                 "fields": {{
-                    "sygnal_oszustwa": {{
-                        "booleanValue": true
-                    }}
+                    "sygnal_oszustwa": {{ "booleanValue": true }}
                 }}
-            }};
-
-            // Wysyłamy asynchroniczne żądanie PATCH bezpośrednio do Google API
-            fetch(url, {{
-                method: "PATCH",
-                headers: {{
-                    "Content-Type": "application/json"
-                }},
-                body: JSON.stringify(payload)
-            }})
-            .then(response => {{
-                console.log("Status zgłoszenia anty-cheat:", response.status);
-            }})
-            .catch(error => {{
-                console.error("Błąd sieciowy anty-cheat:", error);
             }});
+
+            // SendBeacon działa niezawodnie nawet w momencie zamykania/zmiany karty
+            navigator.sendBeacon(url, payload);
         }}
 
-        // Wykrywanie zmiany karty / minimalizacji
+        // Nasłuchujemy TYLKO przełączenia karty / zminimalizowania przeglądarki
         document.addEventListener("visibilitychange", function() {{
-            if (document.hidden) {{
-                zglosOszustwoDoFirestore();
+            if (document.visibilityState === 'hidden') {{
+                zglosOszustwo();
             }}
-        }});
-
-        // Wykrywanie kliknięcia poza obszar okna (np. ściąga na drugim monitorze / w innej aplikacji)
-        window.addEventListener("blur", function() {{
-            zglosOszustwoDoFirestore();
         }});
     </script>
     """, height=0)
