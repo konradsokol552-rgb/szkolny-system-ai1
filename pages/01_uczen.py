@@ -88,11 +88,18 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
 
-# Ukryty przycisk do natychmiastowego odświeżania skryptu bez wylogowywania ucznia
+# 1. Agresywne ukrywanie kontenera przycisku oraz przestrzeni layoutu przez CSS
 st.markdown("""
 <style>
+    /* Ukrywa przycisk oraz jego cały zewnętrzny kontener Streamlit, zapobiegając powstawaniu pustych przestrzeni */
+    div[data-testid="stButton"]:has(button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]),
+    div[data-testid="stButton"]:has(button:contains("RERUN_ANTYCHEAT_TRIGGER")),
     button[aria-label="RERUN_ANTYCHEAT_TRIGGER"] {
         display: none !important;
+        height: 0px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+        visibility: hidden !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -100,7 +107,7 @@ st.markdown("""
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
 
-# 1. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
+# 2. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
 if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
@@ -114,7 +121,7 @@ if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
-# 2. BRAMKA LOGICZNA - BLOKADA DOSTĘPU Z PRZELICZENIEM NA CZAS POLSKI
+# 3. BRAMKA LOGICZNA - BLOKADA DOSTĘPU Z PRZELICZENIEM NA CZAS POLSKI
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
     
@@ -140,7 +147,7 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.info(f"⏳ Pozostały czas kary: ok. **{pozostalo_minut} min**.")
         st.stop()
 
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (KLIKAJĄCEGO UKRYTY PRZYCISK)
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z AUTOMATYCZNYM UKRYWANIEM I PEWNYM KLIKANIEM)
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -152,21 +159,42 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
+        const targetDoc = window.parent ? window.parent.document : document;
+        const targetWin = window.parent ? window.parent : window;
 
-        function wyzwolRerunStreamlit() {{
+        // Funkcja lokalizująca przycisk po tekście i wymuszająca ukrycie jego kontenera w DOM rodzica
+        function znajdzIUkryjPrzycisk() {{
             try {{
-                const doc = window.parent ? window.parent.document : document;
-                const btn = doc.querySelector('button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]');
-                if (btn) {{
-                    btn.click();
-                    return;
+                const buttons = targetDoc.querySelectorAll('button');
+                for (let btn of buttons) {{
+                    if (btn.innerText && btn.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
+                        const container = btn.closest('div[data-testid="stButton"]');
+                        if (container && container.style.display !== 'none') {{
+                            container.style.setProperty('display', 'none', 'important');
+                            container.style.setProperty('height', '0px', 'important');
+                            container.style.setProperty('margin', '0px', 'important');
+                        }}
+                        return btn;
+                    }}
                 }}
             }} catch (e) {{
-                console.warn("Błąd kliknięcia ukrytego przycisku:", e);
+                console.warn("Błąd podczas wyszukiwania przycisku:", e);
             }}
-            // Fallback tylko gdyby nie udało się znaleźć przycisku
-            if (window.parent && window.parent.location) {{
-                window.parent.location.reload();
+            return null;
+        }}
+
+        // Ciągłe upewnianie się w tle, że przycisk jest niewidoczny (odporność na re-render Streamlit)
+        const intervalId = setInterval(znajdzIUkryjPrzycisk, 50);
+
+        function wyzwolRerunStreamlit() {{
+            const btn = znajdzIUkryjPrzycisk();
+            if (btn) {{
+                btn.click();
+            }} else {{
+                console.warn("Przycisk restartu nie został odnaleziony w DOM. Użycie fallbacku.");
+                if (targetWin && targetWin.location) {{
+                    targetWin.location.reload();
+                }}
             }}
         }}
 
@@ -190,25 +218,24 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
             }});
         }}
 
-        const targetDoc = window.parent ? window.parent.document : document;
-        const targetWin = window.parent ? window.parent : window;
-
-        // Wykrycie wyjścia z karty -> wysłanie sygnału PATCH
+        // Monitorowanie widoczności karty przeglądarki
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
             }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
-                // Powrót na kartę -> Wyzwolenie rerunu Streamlit bez wylogowywania
                 wyzwolRerunStreamlit();
             }}
         }});
 
-        // Zabezpieczenie na przypadek powrotu fokusu do okna
+        // Monitorowanie powrotu fokusu do okna
         targetWin.addEventListener("focus", function() {{
             if (oszustwoWyslane) {{
                 wyzwolRerunStreamlit();
             }}
         }});
+
+        // Pierwsza natychmiastowa próba schowania przycisku przy załadowaniu komponentu
+        znajdzIUkryjPrzycisk();
     </script>
     """, height=0)
 
