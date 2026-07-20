@@ -88,6 +88,18 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
 
+# Ukryty przycisk do natychmiastowego odświeżania skryptu bez wylogowywania ucznia
+st.markdown("""
+<style>
+    button[aria-label="RERUN_ANTYCHEAT_TRIGGER"] {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
+    st.rerun()
+
 # 1. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
 if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
@@ -106,7 +118,6 @@ if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
     
-    # Firestore zwraca UTC -> konwertujemy precyzyjnie na Polską Strefę Czasową
     if isinstance(blokada, datetime):
         if blokada.tzinfo is None:
             czas_blokady = blokada.replace(tzinfo=STREFA_PL)
@@ -129,7 +140,7 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.info(f"⏳ Pozostały czas kary: ok. **{pozostalo_minut} min**.")
         st.stop()
 
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z NATYCHMIASTOWYM PRZEŁADOWANIEM GŁÓWNEGO OKNA)
+# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (KLIKAJĄCEGO UKRYTY PRZYCISK)
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -142,15 +153,20 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
     <script>
         let oszustwoWyslane = false;
 
-        function przeładujAplikacje() {{
+        function wyzwolRerunStreamlit() {{
             try {{
-                if (window.parent && window.parent.location) {{
-                    window.parent.location.reload();
-                }} else {{
-                    window.location.reload();
+                const doc = window.parent ? window.parent.document : document;
+                const btn = doc.querySelector('button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]');
+                if (btn) {{
+                    btn.click();
+                    return;
                 }}
             }} catch (e) {{
-                window.location.reload();
+                console.warn("Błąd kliknięcia ukrytego przycisku:", e);
+            }}
+            // Fallback tylko gdyby nie udało się znaleźć przycisku
+            if (window.parent && window.parent.location) {{
+                window.parent.location.reload();
             }}
         }}
 
@@ -177,20 +193,20 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
         const targetDoc = window.parent ? window.parent.document : document;
         const targetWin = window.parent ? window.parent : window;
 
-        // 1. Wykrycie wyjścia z karty -> wysłanie sygnału PATCH
+        // Wykrycie wyjścia z karty -> wysłanie sygnału PATCH
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
             }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
-                // 2. Powrót na kartę -> NATYCHMIASTOWE PRZEŁADOWANIE APLIKACJI
-                przeładujAplikacje();
+                // Powrót na kartę -> Wyzwolenie rerunu Streamlit bez wylogowywania
+                wyzwolRerunStreamlit();
             }}
         }});
 
         // Zabezpieczenie na przypadek powrotu fokusu do okna
         targetWin.addEventListener("focus", function() {{
             if (oszustwoWyslane) {{
-                przeładujAplikacje();
+                wyzwolRerunStreamlit();
             }}
         }});
     </script>
