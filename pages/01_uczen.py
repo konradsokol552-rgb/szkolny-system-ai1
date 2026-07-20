@@ -88,7 +88,7 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
 
-# 1. Agresywne ukrywanie kontenera przycisku oraz przestrzeni layoutu przez CSS
+# 1. Ukrywanie przycisku i usuwanie jego przestrzeni z układu strony przez poprawny CSS
 st.markdown("""
 <style>
     div[data-testid="stButton"]:has(button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]),
@@ -148,7 +148,7 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.info(f"⏳ czas blokady: 45min.")
         st.stop()
 
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z AUTOMATYCZNYM UKRYWANIEM I PEWNYM KLIKANIEM)
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -163,36 +163,19 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
         const targetDoc = window.parent ? window.parent.document : document;
         const targetWin = window.parent ? window.parent : window;
 
-        // Funkcja lokalizująca przycisk po tekście i wymuszająca ukrycie jego kontenera w DOM rodzica
-        function znajdzIUkryjPrzycisk() {{
+        function znajdzPrzycisk() {{
             try {{
-                const buttons = targetDoc.querySelectorAll('button');
-                for (let btn of buttons) {{
-                    if (btn.innerText && btn.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
-                        const container = btn.closest('div[data-testid="stButton"]');
-                        if (container && container.style.display !== 'none') {{
-                            container.style.setProperty('display', 'none', 'important');
-                            container.style.setProperty('height', '0px', 'important');
-                            container.style.setProperty('margin', '0px', 'important');
-                        }}
-                        return btn;
-                    }}
-                }}
+                return targetDoc.querySelector('button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]');
             }} catch (e) {{
-                console.warn("Błąd podczas wyszukiwania przycisku:", e);
+                return null;
             }}
-            return null;
         }}
 
-        // Ciągłe upewnianie się w tle, że przycisk jest niewidoczny (odporność na re-render Streamlit)
-        const intervalId = setInterval(znajdzIUkryjPrzycisk, 50);
-
         function wyzwolRerunStreamlit() {{
-            const btn = znajdzIUkryjPrzycisk();
+            const btn = znajdzPrzycisk();
             if (btn) {{
                 btn.click();
             }} else {{
-                console.warn("Przycisk restartu nie został odnaleziony w DOM. Użycie fallbacku.");
                 if (targetWin && targetWin.location) {{
                     targetWin.location.reload();
                 }}
@@ -219,7 +202,6 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
             }});
         }}
 
-        // Monitorowanie widoczności karty przeglądarki
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
@@ -228,15 +210,11 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
             }}
         }});
 
-        // Monitorowanie powrotu fokusu do okna
         targetWin.addEventListener("focus", function() {{
             if (oszustwoWyslane) {{
                 wyzwolRerunStreamlit();
             }}
         }});
-
-        // Pierwsza natychmiastowa próba schowania przycisku przy załadowaniu komponentu
-        znajdzIUkryjPrzycisk();
     </script>
     """, height=0)
 
