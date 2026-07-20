@@ -144,7 +144,7 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
         st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
-        st.info(f"⏳ Pozostały czas kary: ok. **{pozostalo_minut} min**.")
+        st.info(f"⏳ czas blokady**.")
         st.stop()
 
 # 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z AUTOMATYCZNYM UKRYWANIEM I PEWNYM KLIKANIEM)
