@@ -91,18 +91,19 @@ profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 # 1. Agresywne ukrywanie kontenera przycisku oraz przestrzeni layoutu przez CSS
 st.markdown("""
 <style>
-    /* Ukrywa przycisk oraz jego cały zewnętrzny kontener Streamlit, zapobiegając powstawaniu pustych przestrzeni */
     div[data-testid="stButton"]:has(button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]),
-    div[data-testid="stButton"]:has(button:contains("RERUN_ANTYCHEAT_TRIGGER")),
-    button[aria-label="RERUN_ANTYCHEAT_TRIGGER"] {
+    div[data-testid="element-container"]:has(button[aria-label="RERUN_ANTYCHEAT_TRIGGER"]) {
         display: none !important;
         height: 0px !important;
+        max-height: 0px !important;
         margin: 0px !important;
         padding: 0px !important;
-        visibility: hidden !important;
+        overflow: hidden !important;
+        position: absolute !important;
+        pointer-events: none !important;
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_html=True)
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
