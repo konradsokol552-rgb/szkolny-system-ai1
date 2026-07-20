@@ -110,7 +110,7 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.warning(f"Twój dostęp do lekcji został zablokowany do: {czas_blokady.strftime('%H:%M:%S')}")
         st.stop()
 
-# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO ZMIANA KARTY / MINIMALIZACJA)
+# 3. WSTRZYKIWANIE SKRYPTU DETEKCJI (Z MOCNYM KEEPALIVE FETCH)
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -122,7 +122,6 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
     components.html(f"""
     <script>
         function zglosOszustwo() {{
-            // Używamy natywnego pingu Beacon lub Fetch z ignorowaniem odpowiedzi
             const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
             
             const payload = JSON.stringify({{
@@ -131,11 +130,18 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
                 }}
             }});
 
-            // SendBeacon działa niezawodnie nawet w momencie zamykania/zmiany karty
-            navigator.sendBeacon(url, payload);
+            // keepalive: true gwarantuje wysłanie żądania nawet po opuszczeniu karty
+            fetch(url, {{
+                method: "PATCH",
+                headers: {{
+                    "Content-Type": "application/json"
+                }},
+                body: payload,
+                keepalive: true
+            }}).catch(err => console.error("Błąd anty-cheat:", err));
         }}
 
-        // Nasłuchujemy TYLKO przełączenia karty / zminimalizowania przeglądarki
+        // Nasłuchujemy przełączenia karty
         document.addEventListener("visibilitychange", function() {{
             if (document.visibilityState === 'hidden') {{
                 zglosOszustwo();
