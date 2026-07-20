@@ -121,7 +121,12 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
     
     components.html(f"""
     <script>
+        let oszustwoWyslane = false;
+
         function zglosOszustwo() {{
+            if (oszustwoWyslane) return;
+            oszustwoWyslane = true;
+
             const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
             
             const payload = JSON.stringify({{
@@ -130,20 +135,21 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
                 }}
             }});
 
-            // keepalive: true gwarantuje wysłanie żądania nawet po opuszczeniu karty
             fetch(url, {{
                 method: "PATCH",
-                headers: {{
-                    "Content-Type": "application/json"
-                }},
+                headers: {{ "Content-Type": "application/json" }},
                 body: payload,
                 keepalive: true
-            }}).catch(err => console.error("Błąd anty-cheat:", err));
+            }}).then(() => {{
+                // Przeładowujemy stronę od razu po powrocie
+                window.location.reload();
+            }});
         }}
 
-        // Nasłuchujemy przełączenia karty
-        document.addEventListener("visibilitychange", function() {{
-            if (document.visibilityState === 'hidden') {{
+        // Detekcja ukrycia karty
+        const targetDoc = window.parent ? window.parent.document : document;
+        targetDoc.addEventListener("visibilitychange", function() {{
+            if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
             }}
         }});
