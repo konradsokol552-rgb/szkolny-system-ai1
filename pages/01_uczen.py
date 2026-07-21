@@ -332,7 +332,7 @@ PĘTLA LOGICZNA TEMATU:
    - REAKCJA: 
      -> "NIE": Napisz: "Dobrze, spróbuj jeszcze raz pomyśleć", wyświetl test ponownie.
      -> "TAK": Sprawdź test.
-        * 100% -> Wyświetl: "GRATULACJE! Temat ZALICZONY."
+        * 100% -> Wyświetl: "GRATULACJE! Temat ZALICZONY.masz czas wolny możesz zrobić nastempny temat albo i nie."
         * <100% -> Wyświetl: "Test niezaliczony na 100%. Pomijamy ten temat na później" + wyjaśnij błędy. Oznacz temat jako "POMINIĘTY".
 
 FAZA OCENIANIA:
