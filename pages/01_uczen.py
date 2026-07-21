@@ -148,13 +148,21 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.info(f"⏳ czas blokady: 45min.")
         st.stop()
 
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI
+# =====================================================================
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO PODCZAS SPRAWDZIANU)
+# =====================================================================
+# =====================================================================
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Oparto na twardym stanie z bazy)
+# =====================================================================
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
     project_id = "twoj-projekt-firestore"
 
-if lekcja_aktywna and "zalogowany_id" in st.session_state:
+w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) if profil_aktualny else False
+
+# Skrypt wstrzykujemy ZAWSZE, gdy w bazie widnieje aktywny test – niezależnie od tego, co kliknie uczeń!
+if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
     user_doc_id = st.session_state.zalogowany_id
     
     components.html(f"""
@@ -165,12 +173,10 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
 
         function znajdzPrzycisk() {{
             try {{
-                // 1. Szukanie po bezpośredniej klasie Streamlit przydzielonej z key="btn_ac_rerun_hidden"
                 let btn = targetDoc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
                           targetDoc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
                 if (btn) return btn;
 
-                // 2. Rezerwowe przeszukanie tekstu
                 const buttons = targetDoc.querySelectorAll('button');
                 for (let b of buttons) {{
                     if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
@@ -206,6 +212,7 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
                 }}
             }});
 
+            // keepalive: true gwarantuje wysłanie zapytania nawet podczas odświeżania/zamykania karty
             fetch(url, {{
                 method: "PATCH",
                 headers: {{ "Content-Type": "application/json" }},
@@ -214,6 +221,7 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
             }});
         }}
 
+        // 1. Wykrywanie opuszczenia karty / zmiany okna
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
@@ -226,6 +234,11 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
             if (oszustwoWyslane) {{
                 wyzwolRerunStreamlit();
             }}
+        }});
+
+        // 2. Wykrywanie przeładowania strony (F5), zamknięcia karty lub próby ucieczki z adresu URL
+        targetWin.addEventListener("beforeunload", function(e) {{
+            zglosOszustwo();
         }});
     </script>
     """, height=0)
@@ -318,6 +331,12 @@ FAZA OCENIANIA:
 - Skala: 1.0-0.9 = 6; 0.89-0.7 = 5; 0.69-0 = 1.
 - Podaj wynik liczbowy i ocenę.
 """
+# Szybka funkcja pomocnicza do zmiany stanu testu w chmurze
+def ustaw_stan_testu(w_trakcie: bool):
+    if "zalogowany_id" in st.session_state:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "w_trakcie_testu": w_trakcie
+        }, merge=True)
 
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     api_key = st.session_state.get("user_api_key")
@@ -357,13 +376,24 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
 # =====================================================================
 # PASEK BOCZNY
 # =====================================================================
+# =====================================================================
+# PASEK BOCZNY (Z PEŁNĄ BLOKADĄ ANTY-CHEAT)
+# =====================================================================
 if "struktura_dydaktyczna" not in st.session_state:
     st.session_state.struktura_dydaktyczna = pobierz_strukture()
 
+# Odczytujemy stan aktywnego testu z bazy Firestore
+w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) if profil_aktualny else False
+
 with st.sidebar:
-    if st.button("Wyloguj", use_container_width=True):
-        st.session_state.clear()
-        st.switch_page("app.py")
+    # 🛑 1. Ochrona wylogowania
+    if w_trakcie_testu:
+        st.error("🔒 TRWA TEST KOŃCOWY!")
+        st.caption("Wylogowanie oraz zmiana tematów są zablokowane do czasu ukończenia sprawdzianu.")
+    else:
+        if st.button("Wyloguj", use_container_width=True):
+            st.session_state.clear()
+            st.switch_page("app.py")
 
     st.header("🏫 Dziennik Ucznia")
     
@@ -371,7 +401,12 @@ with st.sidebar:
         st.warning("Brak przedmiotów w bazie.")
         st.stop()
         
-    wybrany_przedmiot = st.selectbox("Wybierz przedmiot:", list(st.session_state.struktura_dydaktyczna.keys()))
+    # 🛑 2. Zamrożenie wyboru przedmiotu
+    wybrany_przedmiot = st.selectbox(
+        "Wybierz przedmiot:", 
+        list(st.session_state.struktura_dydaktyczna.keys()),
+        disabled=w_trakcie_testu
+    )
     dostepne = st.session_state.struktura_dydaktyczna.get(wybrany_przedmiot, [])
     
     st.subheader("📚 Status tematów")
@@ -400,9 +435,15 @@ with st.sidebar:
     if not tematy_do_wyboru:
         st.success("Wszystkie tematy zostały zaliczone! 🎉")
     else:
-        wybor_tematu = st.selectbox("Wybierz temat:", tematy_do_wyboru, key="glowny_wybor_tematu")
+        # 🛑 3. Zamrożenie wyboru tematu i przycisku startu
+        wybor_tematu = st.selectbox(
+            "Wybierz temat:", 
+            tematy_do_wyboru, 
+            key="glowny_wybor_tematu",
+            disabled=w_trakcie_testu
+        )
         
-        if st.button("Rozpocznij lekcję", use_container_width=True):
+        if st.button("Rozpocznij lekcję", use_container_width=True, disabled=w_trakcie_testu):
             if not lekcja_aktywna:
                 st.error("Nauczyciel nie aktywował jeszcze lekcji.")
             else:
