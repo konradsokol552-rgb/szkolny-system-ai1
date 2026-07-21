@@ -601,9 +601,10 @@ else:
                                     "data": datetime.now().strftime("%Y-%m-%d"),
                                     "licznik": st.session_state.licznik_zadan
                                 }
-                                st.success("🎉 Gratulacje! Temat został zaliczony.")
+                                st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                         
                         elif "GRATULACJE! Temat ZALICZONY" in odp:
+                            st.balloons()
                             st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                                 "status": "ZALICZONY",
                                 "data": datetime.now().strftime("%Y-%m-%d"),
