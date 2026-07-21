@@ -71,6 +71,12 @@ def czy_temat_niezaliczone(t):
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
 
+def ustaw_stan_testu(w_trakcie: bool):
+    if "zalogowany_id" in st.session_state:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "w_trakcie_testu": w_trakcie
+        }, merge=True)
+
 # =====================================================================
 # 3. STRAŻNIK DOSTĘPU I INICJALIZACJA PROFILU
 # =====================================================================
@@ -83,6 +89,10 @@ if st.session_state.get("role") != "uczen":
 # Pobieramy profil, zanim użyje go anty-cheat!
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+
+if not lekcja_aktywna and profil_aktualny and profil_aktualny.get("w_trakcie_testu"):
+    ustaw_stan_testu(False)
+    st.rerun()
 
 # =====================================================================
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
@@ -332,11 +342,7 @@ FAZA OCENIANIA:
 - Podaj wynik liczbowy i ocenę.
 """
 # Szybka funkcja pomocnicza do zmiany stanu testu w chmurze
-def ustaw_stan_testu(w_trakcie: bool):
-    if "zalogowany_id" in st.session_state:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "w_trakcie_testu": w_trakcie
-        }, merge=True)
+
 
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     api_key = st.session_state.get("user_api_key")
