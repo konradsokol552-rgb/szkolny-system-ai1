@@ -148,13 +148,25 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
         st.info(f"⏳ czas blokady: 45min.")
         st.stop()
 
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI
+# =====================================================================
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO PODCZAS SPRAWDZIANU)
+# =====================================================================
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
     project_id = "twoj-projekt-firestore"
 
-if lekcja_aktywna and "zalogowany_id" in st.session_state:
+# Sprawdzamy, czy w historii czatu trwa obecnie faza testu / sprawdzianu
+wiadomosci = st.session_state.get("messages", [])
+czy_sprawdzian = any(
+    "sprawdzający" in m.get("content", "").lower() or 
+    "faza testu" in m.get("content", "").lower() or
+    "czas na test" in m.get("content", "").lower()
+    for m in wiadomosci
+)
+
+# Skrypt JS wstrzykujemy TYLKO wtedy, gdy lekcja jest aktywna ORAZ uczeń pisze sprawdzian
+if lekcja_aktywna and "zalogowany_id" in st.session_state and czy_sprawdzian:
     user_doc_id = st.session_state.zalogowany_id
     
     components.html(f"""
@@ -165,12 +177,10 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state:
 
         function znajdzPrzycisk() {{
             try {{
-                // 1. Szukanie po bezpośredniej klasie Streamlit przydzielonej z key="btn_ac_rerun_hidden"
                 let btn = targetDoc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
                           targetDoc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
                 if (btn) return btn;
 
-                // 2. Rezerwowe przeszukanie tekstu
                 const buttons = targetDoc.querySelectorAll('button');
                 for (let b of buttons) {{
                     if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
