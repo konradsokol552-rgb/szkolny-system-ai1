@@ -305,7 +305,7 @@ PĘTLA LOGICZNA TEMATU:
    - Przy ponownym rozwiązywaniu źle zrobionego zadania staraj się naprowadzić ucznia
 3. [FAZA TESTU KOŃCOWEGO]: 
    - Powiedz: "Czas na test sprawdzający. Teraz pracujesz samodzielnie, bez moich wskazówek". Wygeneruj 4 zadania (po jednym z typu).
-   - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."
+   - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."(nie wyświetlan tego w wiadomosci z sprawdzianem, tylko w osobnej wiadomości).
    - REAKCJA: 
      -> "NIE": Napisz: "Dobrze, spróbuj jeszcze raz pomyśleć", wyświetl test ponownie.
      -> "TAK": Sprawdź test.
