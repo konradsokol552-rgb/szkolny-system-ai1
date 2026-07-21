@@ -6,7 +6,6 @@ import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import streamlit.components.v1 as components
-from streamlit_js_eval import streamlit_js_eval
 
 # =====================================================================
 # 1. STAŁE (Muszą być załadowane jako pierwsze)
@@ -31,7 +30,6 @@ def get_db():
         st.stop()
 
 db = get_db()
-
 
 def wczytaj_profil_z_chmury(identyfikator):
     try:
@@ -71,6 +69,12 @@ def czy_temat_niezaliczone(t):
     status = dane.get("status", "Nie rozpoczęte") if isinstance(dane, dict) else dane
     return status != "ZALICZONY"
 
+def ustaw_stan_testu(w_trakcie: bool):
+    if "zalogowany_id" in st.session_state:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "w_trakcie_testu": w_trakcie
+        }, merge=True)
+
 # =====================================================================
 # 3. STRAŻNIK DOSTĘPU I INICJALIZACJA PROFILU
 # =====================================================================
@@ -80,15 +84,21 @@ if st.session_state.get("role") != "uczen":
     st.error("Nie masz uprawnień uczniowskich.")
     st.stop()
 
-# Pobieramy profil, zanim użyje go anty-cheat!
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+
+# POPRAWKA 1: Bezpieczna synchronizacja stanu profilu z st.session_state
+if "postep_tematow" not in st.session_state:
+    st.session_state.postep_tematow = profil_aktualny.get("postep_tematow", {}) if profil_aktualny else {}
+if "historia_czatow" not in st.session_state:
+    st.session_state.historia_czatow = profil_aktualny.get("historia_czatow", {}) if profil_aktualny else {}
+if "teorie_lekcji" not in st.session_state:
+    st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {}) if profil_aktualny else {}
 
 # =====================================================================
 # SYSTEM ANTY-CHEAT (DETEKCJA I EGZEKWOWANIE KARY)
 # =====================================================================
 
-# 1. Ukrywanie przycisku w CSS na podstawie unikalnej klasy generatora z parametru 'key'
 st.markdown("""
 <style>
     div[class*="st-key-btn_ac_rerun_hidden"],
@@ -108,21 +118,21 @@ st.markdown("""
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
 
-# 2. REAKCJA PYTHONA NA SYGNAŁ Z BAZY DANYCH
 if profil_aktualny and profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
     try:
         db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
             "sygnal_oszustwa": False,
-            "blokada_do": czas_kary
+            "blokada_do": czas_kary,
+            "w_trakcie_testu": False
         }, merge=True)
         profil_aktualny["blokada_do"] = czas_kary
         profil_aktualny["sygnal_oszustwa"] = False
+        profil_aktualny["w_trakcie_testu"] = False
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
-# 3. BRAMKA LOGICZNA - BLOKADA DOSTĘPU Z PRZELICZENIEM NA CZAS POLSKI
 if profil_aktualny and profil_aktualny.get("blokada_do"):
     blokada = profil_aktualny["blokada_do"]
     
@@ -140,19 +150,13 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
     teraz = datetime.now(STREFA_PL)
     
     if czas_blokady > teraz:
-        roznica_sekund = (czas_blokady - teraz).total_seconds()
-        pozostalo_minut = int(roznica_sekund // 60) + 1
-        
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
         st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
-        st.info(f"⏳ czas blokady: 45min.")
+        st.info("⏳ czas blokady: 45 min.")
         st.stop()
 
 # =====================================================================
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO PODCZAS SPRAWDZIANU)
-# =====================================================================
-# =====================================================================
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Oparto na twardym stanie z bazy)
+# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI
 # =====================================================================
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
@@ -161,7 +165,6 @@ except Exception:
 
 w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) if profil_aktualny else False
 
-# Skrypt wstrzykujemy ZAWSZE, gdy w bazie widnieje aktywny test – niezależnie od tego, co kliknie uczeń!
 if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
     user_doc_id = st.session_state.zalogowany_id
     
@@ -212,7 +215,6 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
                 }}
             }});
 
-            // keepalive: true gwarantuje wysłanie zapytania nawet podczas odświeżania/zamykania karty
             fetch(url, {{
                 method: "PATCH",
                 headers: {{ "Content-Type": "application/json" }},
@@ -221,7 +223,6 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
             }});
         }}
 
-        // 1. Wykrywanie opuszczenia karty / zmiany okna
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
@@ -236,7 +237,6 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
             }}
         }});
 
-        // 2. Wykrywanie przeładowania strony (F5), zamknięcia karty lub próby ucieczki z adresu URL
         targetWin.addEventListener("beforeunload", function(e) {{
             zglosOszustwo();
         }});
@@ -244,7 +244,7 @@ if lekcja_aktywna and "zalogowany_id" in st.session_state and w_trakcie_testu:
     """, height=0)
 
 # =====================================================================
-# FUNKCJA ZAPISU PROFILU (Musi być pod zdefiniowaniem zmiennych)
+# FUNKCJA ZAPISU PROFILU
 # =====================================================================
 def zapisz_profil_w_chmurze():
     identyfikator = st.session_state.zalogowany_id
@@ -284,7 +284,7 @@ GŁÓWNE ZASADY BEZPIECZEŃSTWA:
 - NIGDY nie podawaj gotowego wyniku ani pełnego rozwiązania zadania.
 - Jeśli uczeń pyta o rzeczy niezwiązane z lekcją, napisz: "Wróćmy do nauki" i powtórz aktualne zadanie.
 - ZAKAZ GENEROWANIA "THOUGHTS". Odpowiadaj bezpośrednio do ucznia.
-- WSKAZÓWKI: Must być krótkie (max 2 zdania), potoczne, nie akademickie.
+- WSKAZÓWKI: Muszą być krótkie (max 2 zdania), potoczne, nie akademickie.
 
 KOMENDY DEWELOPERSKIE:
 - Hasło dostępowe: "samolotdom".
@@ -313,17 +313,17 @@ PĘTLA LOGICZNA TEMATU:
    - Jeśli uczeń odpowie DOBRZE: usuń zadanie z listy, podaj kolejne.
    - Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego (używając algorytmu decyzyjnego), napisz "Odłóżmy to zadanie na koniec", przesuń zadanie na koniec kolejki i daj nowe.
    - [faza przygotowania]: Po rozwiązaniu wszystkich zadań zapytaj ucznia, czy chce jeszcze poćwiczyć konkretny typ zadania. Poinformuj go że jeżeli chce iść dalej to ma napisać koniec. Jeśli napisze "koniec", przejdź do FAZY TESTU KOŃCOWEGO. Jeśli "NIE", idź tam od razu.
-   - Po każdym poprawnie wykonanym zadaniu dodaj jedno krótkie zdanie budujące pewność siebie lub odnieś się do logiki ucznia (np. "Dokładnie tak, świetnie przekształciłeś wzór!")
-   - Po źle wykonanym zadaniu pociesz ucznia
-   - Przy ponownym rozwiązywaniu źle zrobionego zadania staraj się naprowadzić ucznia
+   - Po każdym poprawnie wykonanym zadaniu dodaj jedno krótkie zdanie budujące pewność siebie lub odnieś się do logiki ucznia.
+   - Po źle wykonanym zadaniu pociesz ucznia.
+   - Przy ponownym rozwiązywaniu źle zrobionego zadania staraj się naprowadzić ucznia.
 3. [FAZA TESTU KOŃCOWEGO]: 
    - Powiedz: "Czas na test sprawdzający. Teraz pracujesz samodzielnie, bez moich wskazówek". Wygeneruj 4 zadania (po jednym z typu).
-   - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."(nie wyświetlan tego w wiadomosci z sprawdzianem, tylko w osobnej wiadomości).
+   - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."(nie wyświetlaj tego w wiadomości ze sprawdzianem, tylko w osobnej wiadomości).
    - REAKCJA: 
      -> "NIE": Napisz: "Dobrze, spróbuj jeszcze raz pomyśleć", wyświetl test ponownie.
      -> "TAK": Sprawdź test.
-        * 100% -> Wyświetl: "GRATULACJE! Temat ZALICZONY."
-        * <100% -> Wyświetl: "Test niezaliczony na 100%. Pomijamy ten temat na później" + wyjaśnij błędy. Oznacz temat jako "POMINIĘTY".
+       * 100% -> Wyświetl: "GRATULACJE! Temat ZALICZONY."
+       * <100% -> Wyświetl: "Test niezaliczony na 100%. Pomijamy ten temat na później" + wyjaśnij błędy. Oznacz temat jako "POMINIĘTY".
 
 FAZA OCENIANIA:
 - Policz skończone tematy vs wszystkie tematy.
@@ -331,19 +331,14 @@ FAZA OCENIANIA:
 - Skala: 1.0-0.9 = 6; 0.89-0.7 = 5; 0.69-0 = 1.
 - Podaj wynik liczbowy i ocenę.
 """
-# Szybka funkcja pomocnicza do zmiany stanu testu w chmurze
-def ustaw_stan_testu(w_trakcie: bool):
-    if "zalogowany_id" in st.session_state:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
-            "w_trakcie_testu": w_trakcie
-        }, merge=True)
 
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     api_key = st.session_state.get("user_api_key")
     if not api_key:
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
+    # POPRAWKA 2: Oficjalny model Gemini (gemini-2.5-flash-lite)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={api_key}"
     
     contents = [
         {
@@ -376,17 +371,10 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
 # =====================================================================
 # PASEK BOCZNY
 # =====================================================================
-# =====================================================================
-# PASEK BOCZNY (Z PEŁNĄ BLOKADĄ ANTY-CHEAT)
-# =====================================================================
 if "struktura_dydaktyczna" not in st.session_state:
     st.session_state.struktura_dydaktyczna = pobierz_strukture()
 
-# Odczytujemy stan aktywnego testu z bazy Firestore
-w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) if profil_aktualny else False
-
 with st.sidebar:
-    # 🛑 1. Ochrona wylogowania
     if w_trakcie_testu:
         st.error("🔒 TRWA TEST KOŃCOWY!")
         st.caption("Wylogowanie oraz zmiana tematów są zablokowane do czasu ukończenia sprawdzianu.")
@@ -401,7 +389,6 @@ with st.sidebar:
         st.warning("Brak przedmiotów w bazie.")
         st.stop()
         
-    # 🛑 2. Zamrożenie wyboru przedmiotu
     wybrany_przedmiot = st.selectbox(
         "Wybierz przedmiot:", 
         list(st.session_state.struktura_dydaktyczna.keys()),
@@ -435,7 +422,6 @@ with st.sidebar:
     if not tematy_do_wyboru:
         st.success("Wszystkie tematy zostały zaliczone! 🎉")
     else:
-        # 🛑 3. Zamrożenie wyboru tematu i przycisku startu
         wybor_tematu = st.selectbox(
             "Wybierz temat:", 
             tematy_do_wyboru, 
@@ -514,7 +500,6 @@ if "aktualny_temat" not in st.session_state:
 else:
     st.caption(f"📖 Temat: {st.session_state.aktualny_temat}")
     
-    # --- DWUKIERUNKOWY PRZYCISK POMOCY (SOS) ---
     stan_pomocy = profil_aktualny.get("potrzebuje_pomocy", False) if profil_aktualny else False
 
     if stan_pomocy:
@@ -542,14 +527,12 @@ else:
             })
             st.rerun()
 
-    # --- WERYFIKACJA STANU LEKCJI I RENDEROWANIE INTERFEJSU ---
     if not lekcja_aktywna:
         st.error("🔒 Lekcja zakończona! Czat i zadania zostały zablokowane.")
         if st.session_state.get("teoria_lekcji"):
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
-        # Interfejs aktywnej lekcji
         st.subheader("Postęp w temacie:")
         licznik = st.session_state.get("licznik_zadan", 0)
         st.progress(min(licznik / 8, 1.0))
@@ -557,14 +540,18 @@ else:
         
         czy_sprawdzian = any("sprawdzający" in m["content"] for m in st.session_state.messages)
         
+        # POPRAWKA 3: Automatyczna aktualizacja stanu testu w Firestore
+        if czy_sprawdzian != w_trakcie_testu:
+            ustaw_stan_testu(czy_sprawdzian)
+
         if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
             with st.expander("📘 MATERIAŁY", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
                 
-        if st.session_state.messages:
-            ostatnia = st.session_state.messages[-1]
-            with st.chat_message(ostatnia["role"]):
-                st.markdown(ostatnia["content"])
+        # POPRAWKA 4: Wyświetlanie całej historii rozmowy z lekcji
+        for msg in st.session_state.get("messages", []):
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
                 
         if prompt := st.chat_input("Napisz odpowiedź..."):
             if "aktualny_temat" not in st.session_state:
@@ -595,6 +582,7 @@ else:
                                     "data": datetime.now().strftime("%Y-%m-%d"),
                                     "licznik": st.session_state.licznik_zadan
                                 }
+                                ustaw_stan_testu(False)
                                 st.success("🎉 Gratulacje! Temat został zaliczony.")
                         
                         elif "GRATULACJE! Temat ZALICZONY" in odp:
@@ -603,6 +591,7 @@ else:
                                 "data": datetime.now().strftime("%Y-%m-%d"),
                                 "licznik": st.session_state.licznik_zadan
                             }
+                            ustaw_stan_testu(False)
                         
                         czysta_odp = odp.replace("[ZALICZONE]", "").strip()
                         st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
