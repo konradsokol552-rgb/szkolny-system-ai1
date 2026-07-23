@@ -161,9 +161,6 @@ if profil_aktualny and profil_aktualny.get("blokada_do"):
 # =====================================================================
 # 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (TYLKO PODCZAS SPRAWDZIANU)
 # =====================================================================
-# =====================================================================
-# 4. WSTRZYKIWANIE SKRYPTU DETEKCJI (Oparto na twardym stanie z bazy)
-# =====================================================================
 try:
     project_id = st.secrets["connections"]["firestore"]["project_id"]
 except Exception:
@@ -327,6 +324,8 @@ PĘTLA LOGICZNA TEMATU:
    - Po źle wykonanym zadaniu pociesz ucznia
    - Przy ponownym rozwiązywaniu źle zrobionego zadania staraj się naprowadzić ucznia
 3. [FAZA TESTU KOŃCOWEGO]: 
+   - w wiadomosci ze testem napisz na samym początku [SPRAWDZIAN].
+   - jezeli uczeni odda odpowiedzi to w wiadomosci w której sprawdzasz wyniki napisz na samym początku [KONIEC SPRAWDZIANU].
    - Powiedz: "Czas na test sprawdzający. Teraz pracujesz samodzielnie, bez moich wskazówek". Wygeneruj 4 zadania (po jednym z typu).
    - PROCEDURA ODDAWANIA: Po pierwszej odpowiedzi ucznia MASZ ZAKAZ sprawdzania wyników. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."(nie wyświetlan tego w wiadomosci z sprawdzianem, tylko w osobnej wiadomości).
    - REAKCJA: 
@@ -341,8 +340,6 @@ FAZA OCENIANIA:
 - Skala: 1.0-0.9 = 6; 0.89-0.7 = 5; 0.69-0 = 1.
 - Podaj wynik liczbowy i ocenę.
 """
-# Szybka funkcja pomocnicza do zmiany stanu testu w chmurze
-
 
 def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     api_key = st.session_state.get("user_api_key")
@@ -379,9 +376,6 @@ def zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan):
     except Exception as e:
         return f"❌ Błąd połączenia: {str(e)}"
 
-# =====================================================================
-# PASEK BOCZNY
-# =====================================================================
 # =====================================================================
 # PASEK BOCZNY (Z PEŁNĄ BLOKADĄ ANTY-CHEAT)
 # =====================================================================
@@ -592,6 +586,15 @@ else:
                     if odp.startswith("❌"):
                         st.error(f"AI zwróciło błąd: {odp}")
                     else:
+                        # --- OBSŁUGA FLAG TESTU SPRAWDZAJĄCEGO ---
+                        if "[SPRAWDZIAN]" in odp:
+                            ustaw_stan_testu(True)
+                            odp = odp.replace("[SPRAWDZIAN]", "").strip()
+                            
+                        if "[KONIEC SPRAWDZIANU]" in odp:
+                            ustaw_stan_testu(False)
+                            odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
+
                         if "[ZALICZONE]" in odp:
                             st.session_state.licznik_zadan = obecny_licznik + 1
                             
