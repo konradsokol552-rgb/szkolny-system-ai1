@@ -119,10 +119,16 @@ def pobierz_strukture() -> dict:
         st.error(f"Błąd wczytywania struktury: {e}")
         return {}
 
-def ustaw_stan_testu(w_trakcie: bool):
+def ustaw_stan_testu(w_trakcie: bool, temat: str = None, wyczysc_temat: bool = False):
     if "zalogowany_id" in st.session_state:
+        dane_do_zapisu = {"w_trakcie_testu": w_trakcie}
+        if temat is not None:
+            dane_do_zapisu["temat_sprawdzianu"] = temat
+        elif wyczysc_temat:
+            dane_do_zapisu["temat_sprawdzianu"] = ""
+
         db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set(
-            {"w_trakcie_testu": w_trakcie}, merge=True
+            dane_do_zapisu, merge=True
         )
         czysc_cache_profilu()
 
@@ -174,14 +180,22 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
+# Gdy lekcja jest nieaktywna, wyłączamy flagę w_trakcie_testu (ale zostawiamy temat_sprawdzianu w DB)
 if not lekcja_aktywna and profil_aktualny.get("w_trakcie_testu"):
     ustaw_stan_testu(False)
     st.rerun()
 
+# Gdy lekcja staje się aktywna, a uczeń ma otwarty temat, który ma zapisany niezakończony sprawdzian:
+if lekcja_aktywna and not profil_aktualny.get("w_trakcie_testu"):
+    aktualny = st.session_state.get("aktualny_temat")
+    temat_sprawdzianu = profil_aktualny.get("temat_sprawdzianu")
+    if aktualny and temat_sprawdzianu and aktualny == temat_sprawdzianu:
+        ustaw_stan_testu(True)
+        st.rerun()
+
 # =====================================================================
 # 4. SYSTEM ANTY-CHEAT
 # =====================================================================
-# CSS do ukrycia wyzwalacza ponownego przeładowania
 st.markdown("""
 <style>
     div[class*="st-key-btn_ac_rerun_hidden"],
@@ -200,7 +214,6 @@ st.markdown("""
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
 
-# Reakcja na sygnał oszustwa
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
@@ -215,7 +228,6 @@ if profil_aktualny.get("sygnal_oszustwa") is True:
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
-# Egzekwowanie blokady czasowej
 if profil_aktualny.get("blokada_do"):
     czas_blokady = _parsuj_czas_blokady(profil_aktualny["blokada_do"])
     teraz = datetime.now(STREFA_PL)
@@ -226,7 +238,6 @@ if profil_aktualny.get("blokada_do"):
         st.info("⏳ czas blokady: 45min.")
         st.stop()
 
-# Wstrzykiwanie skryptu śledzącego JS podczas testu
 w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False)
 if lekcja_aktywna and w_trakcie_testu:
     try:
@@ -413,6 +424,10 @@ with st.sidebar:
             else:
                 st.session_state.aktualny_temat = wybor_tematu
                 
+                # Jeśli ten temat miał otwarty sprawdzian, włączamy tryb testu
+                if profil_aktualny.get("temat_sprawdzianu") == wybor_tematu:
+                    ustaw_stan_testu(True)
+
                 st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {})
                 st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu)
                 
@@ -541,11 +556,11 @@ else:
                     st.error(f"AI zwróciło błąd: {odp}")
                 else:
                     if "[SPRAWDZIAN]" in odp:
-                        ustaw_stan_testu(True)
+                        ustaw_stan_testu(True, temat=st.session_state.aktualny_temat)
                         odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
                     if "[KONIEC SPRAWDZIANU]" in odp:
-                        ustaw_stan_testu(False)
+                        ustaw_stan_testu(False, wyczysc_temat=True)
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
                     if "[ZALICZONE]" in odp:
