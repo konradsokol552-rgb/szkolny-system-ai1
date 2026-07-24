@@ -333,8 +333,8 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
             "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{dynamiczny_kontekst}"}]
         },
         "generationConfig": {
-            "temperature": 0.9,
-            "topP": 0.95
+            "temperature": 0.6,
+            "topP": 0.50
         }
     }
     
