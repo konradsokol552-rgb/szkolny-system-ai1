@@ -334,7 +334,7 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         },
         "generationConfig": {
             "temperature": 0.6,
-            "topP": 0.50
+            "topP": 0.80
         }
     }
     
