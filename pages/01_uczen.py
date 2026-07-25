@@ -320,7 +320,7 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
     if not api_key:
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
     
     contents = [
         {
