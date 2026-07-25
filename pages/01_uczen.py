@@ -106,7 +106,7 @@ def sprawdz_aktywnosc_lekcji() -> bool:
         pass
     return False
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1)
 def pobierz_strukture() -> dict:
     try:
         docs = db.collection(COL_PRZEDMIOTY).stream()
