@@ -6,6 +6,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from google.cloud import firestore
 from google.oauth2 import service_account
+import time
+import random
 
 # =====================================================================
 # 1. STAŁE I KONFIGURACJA
@@ -308,12 +310,15 @@ if lekcja_aktywna and w_trakcie_testu:
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
 # =====================================================================
+import time
+import random
+
 def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) -> str:
     api_key = st.session_state.get("user_api_key")
     if not api_key:
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     contents = [
         {
@@ -323,10 +328,25 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         for m in historia_rozmowy[-10:]
     ]
     
+    # ZABEZPIECZENIE RÓL: Gemini wymaga, aby pierwsza wiadomość w historii należała do 'user'
+    if contents and contents[0]["role"] == "model":
+        contents.insert(0, {"role": "user", "parts": [{"text": "Rozpoczynamy lekcję."}]})
+
+    # UNIKALNE ZIARNO: Gwarantuje unikalność pytań przy każdym wywołaniu
+    ziarno = f"{time.time()}_{random.randint(1000, 9999)}"
+
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
-        dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie."
+        dynamiczny_kontekst = (
+            f"AKTUALNY TEMAT: {temat_kontekst}\n"
+            f"STATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie.\n"
+            f"ZIARNO_LOSOWOSCI: {ziarno}"
+        )
     else:
-        dynamiczny_kontekst = f"AKTUALNY TEMAT: {temat_kontekst}\nSTATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii."
+        dynamiczny_kontekst = (
+            f"AKTUALNY TEMAT: {temat_kontekst}\n"
+            f"STATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii.\n"
+            f"ZIARNO_LOSOWOSCI: {ziarno}"
+        )
 
     payload = {
         "contents": contents,
@@ -334,8 +354,8 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
             "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{dynamiczny_kontekst}"}]
         },
         "generationConfig": {
-            "temperature": 0.6,
-            "topP": 0.80
+            "temperature": 0.7,
+            "topP": 0.95
         }
     }
     
@@ -418,7 +438,6 @@ with st.sidebar:
                 st.error("Nauczyciel nie aktywował jeszcze lekcji.")
             else:
                 st.session_state.aktualny_temat = wybor_tematu
-                
                 st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {})
                 st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(wybor_tematu)
                 
@@ -430,18 +449,27 @@ with st.sidebar:
                 
                 if not st.session_state.messages:
                     with st.spinner("Inicjalizacja lekcji z AI..."):
-                        instrukcja = "Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                        odp = zapytaj_ai([{"role": "user", "content": instrukcja}], wybor_tematu, 0)
+                        instrukcja = "Rozpoczynamy lekcję. Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
+                        
+                        # Zapisujemy intencję użytkownika, żeby utrzymać prawidłowy priorytet ról w API
+                        st.session_state.messages = [{"role": "user", "content": instrukcja}]
+                        
+                        odp = zapytaj_ai(st.session_state.messages, wybor_tematu, 0)
                         
                         if "[TEORIA]" in odp and "[ZADANIE]" in odp:
                             st.session_state.teoria_lekcji = odp.split("[TEORIA]")[1].split("[TEORIA_KONIEC]")[0].strip()
                             if "teorie_lekcji" not in st.session_state:
                                 st.session_state.teorie_lekcji = {}
                             st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
-                            st.session_state.messages.append({"role": "assistant", "content": odp.split("[ZADANIE]")[1].strip()})
+                            
+                            # Nadpisujemy historię czatu czystym zadaniem od AI
+                            zadanie_tresc = odp.split("[ZADANIE]")[1].strip()
+                            st.session_state.messages = [{"role": "assistant", "content": zadanie_tresc}]
                             zapisz_profil_w_chmurze()
                         else:
                             st.session_state.teoria_lekcji = odp
+                            st.session_state.messages = [{"role": "assistant", "content": odp}]
+                            zapisz_profil_w_chmurze()
                 st.rerun()
 
 # =====================================================================
@@ -565,12 +593,12 @@ else:
                             }
                             st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                     
-                    elif "GRATULACJE! Temat ZALICZONY" in odp:
+                    if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": st.session_state.licznik_zadan
+                            "licznik": st.session_state.get("licznik_zadan", 8)
                         }
                     
                     czysta_odp = odp.replace("[ZALICZONE]", "").strip()
