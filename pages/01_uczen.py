@@ -243,79 +243,74 @@ if profil_aktualny.get("blokada_do"):
 # Wstrzykiwanie skryptu śledzącego JS podczas testu
 w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False)
 if lekcja_aktywna and w_trakcie_testu:
-    try:
-        project_id = st.secrets["connections"]["firestore"]["project_id"]
-    except Exception:
-        project_id = "twoj-projekt-firestore"
-
-    user_doc_id = st.session_state.zalogowany_id
-    user_api_key = st.session_state.get("user_api_key", "")
-    
-    components.html(f"""
+    components.html("""
     <script>
         let oszustwoWyslane = false;
         const targetDoc = window.parent ? window.parent.document : document;
         const targetWin = window.parent ? window.parent : window;
 
-        function znajdzPrzycisk() {{
-            try {{
-                let btn = targetDoc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
-                          targetDoc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
-                if (btn) return btn;
+        function znajdzPrzycisk() {
+            const dokumenty = [document];
+            try {
+                if (window.parent && window.parent !== window) dokumenty.push(window.parent.document);
+            } catch (e) {
+                console.warn("Brak dostępu do window.parent.document", e);
+            }
+            try {
+                if (window.top && window.top !== window) dokumenty.push(window.top.document);
+            } catch (e) {
+                console.warn("Brak dostępu do window.top.document", e);
+            }
 
-                const buttons = targetDoc.querySelectorAll('button');
-                for (let b of buttons) {{
-                    if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
-                        return b;
-                    }}
-                }}
-            }} catch (e) {{
-                console.warn("Błąd wyszukiwania przycisku:", e);
-            }}
+            for (const doc of dokumenty) {
+                try {
+                    let btn = doc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
+                              doc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
+                    if (btn) return btn;
+
+                    const buttons = doc.querySelectorAll('button');
+                    for (let b of buttons) {
+                        if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {
+                            return b;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Błąd wyszukiwania przycisku w dokumencie:", e);
+                }
+            }
             return null;
-        }}
+        }
 
-        function wyzwolRerunStreamlit() {{
+        function wyzwolRerunStreamlit() {
             const btn = znajdzPrzycisk();
-            if (btn) {{
+            if (btn) {
                 btn.click();
-            }} else if (targetWin && targetWin.location) {{
+            } else if (targetWin && targetWin.location) {
                 targetWin.location.reload();
-            }}
-        }}
+            }
+        }
 
-        function zglosOszustwo() {{
+        function zglosOszustwo() {
             if (oszustwoWyslane) return;
             oszustwoWyslane = true;
+            wyzwolRerunStreamlit();
+        }
 
-            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={user_api_key}";
-            const payload = JSON.stringify({{
-                "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
-            }});
-
-            fetch(url, {{
-                method: "PATCH",
-                headers: {{ "Content-Type": "application/json" }},
-                body: payload,
-                keepalive: true
-            }});
-        }}
-
-        targetDoc.addEventListener("visibilitychange", function() {{
-            if (targetDoc.visibilityState === 'hidden') {{
+        targetDoc.addEventListener("visibilitychange", function() {
+            if (targetDoc.visibilityState === 'hidden') {
                 zglosOszustwo();
-            }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
+            } else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {
                 wyzwolRerunStreamlit();
-            }}
-        }});
+            }
+        });
 
-        targetWin.addEventListener("focus", function() {{
+        targetWin.addEventListener("focus", function() {
             if (oszustwoWyslane) wyzwolRerunStreamlit();
-        }});
+        });
 
-        targetWin.addEventListener("beforeunload", function(e) {{
+        targetWin.addEventListener("beforeunload", function(e) {
             zglosOszustwo();
-        }});
+        });
     </script>
     """, height=0)
 
