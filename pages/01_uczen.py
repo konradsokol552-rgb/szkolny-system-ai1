@@ -215,8 +215,6 @@ st.markdown("""
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     st.rerun()
-
-# Reakcja na sygnał oszustwa
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
@@ -239,7 +237,7 @@ if profil_aktualny.get("blokada_do"):
     if czas_blokady > teraz:
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
         st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
-        st.info("⏳ czas blokady: 45min.")
+        st.info("⏳ Czas trwania blokady: 45 minut.")
         st.stop()
 
 # Wstrzykiwanie skryptu JS śledzącego opuszczenie karty podczas testu
@@ -255,35 +253,6 @@ if lekcja_aktywna and w_trakcie_testu:
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
-        const targetDoc = window.parent ? window.parent.document : document;
-        const targetWin = window.parent ? window.parent : window;
-
-        function znajdzPrzycisk() {{
-            try {{
-                let btn = targetDoc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
-                          targetDoc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
-                if (btn) return btn;
-
-                const buttons = targetDoc.querySelectorAll('button');
-                for (let b of buttons) {{
-                    if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
-                        return b;
-                    }}
-                }}
-            }} catch (e) {{
-                console.warn("Błąd wyszukiwania przycisku:", e);
-            }}
-            return null;
-        }}
-
-        function wyzwolRerunStreamlit() {{
-            const btn = znajdzPrzycisk();
-            if (btn) {{
-                btn.click();
-            }} else if (targetWin && targetWin.location) {{
-                targetWin.location.reload();
-            }}
-        }}
 
         function zglosOszustwo() {{
             if (oszustwoWyslane) return;
@@ -294,31 +263,42 @@ if lekcja_aktywna and w_trakcie_testu:
                 "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
             }});
 
-            fetch(url, {{
-                method: "PATCH",
-                headers: {{ "Content-Type": "application/json" }},
-                body: payload,
-                keepalive: true
-            }}).then(() => {{
-                wyzwolRerunStreamlit();
-            }}).catch(err => console.error("Błąd zgłaszania oszustwa:", err));
+            // Użycie sendBeacon gwarantuje wysłanie żądania nawet przy zamknięciu karty
+            if (navigator.sendBeacon) {{
+                const blob = new Blob([payload], {{ type: 'application/json' }});
+                navigator.sendBeacon(url, blob);
+            }} else {{
+                fetch(url, {{
+                    method: "PATCH",
+                    headers: {{ "Content-Type": "application/json" }},
+                    body: payload,
+                    keepalive: true
+                }}).catch(err => console.error("Błąd wysyłania sygnału:", err));
+            }}
+
+            // Wymuszenie odświeżenia strony po wykryciu wyjścia
+            setTimeout(() => {{
+                try {{
+                    window.top.location.reload();
+                }} catch (e) {{
+                    window.location.reload();
+                }}
+            }}, 500);
         }}
 
-        targetDoc.addEventListener("visibilitychange", function() {{
-            if (targetDoc.visibilityState === 'hidden') {{
+        // Śledzenie zmiany widoczności karty (działa niezawodnie w iframe)
+        document.addEventListener("visibilitychange", function() {{
+            if (document.visibilityState === 'hidden') {{
                 zglosOszustwo();
             }}
         }});
 
-        targetWin.addEventListener("blur", function() {{
-            zglosOszustwo();
-        }});
-
-        targetWin.addEventListener("beforeunload", function(e) {{
+        // Śledzenie utraty fokusu okna
+        window.addEventListener("blur", function() {{
             zglosOszustwo();
         }});
     </script>
-    """, height=0)
+    """, height=0, width=0)
 
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
