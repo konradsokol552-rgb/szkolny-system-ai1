@@ -372,7 +372,7 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
     }
     
     try:
-        response = requests.post(url, json=payload, timeout=15)
+        response = requests.post(url, json=payload, timeout=20)
         if response.status_code == 429:
             return "❌ Przeciążenie serwera (429). Spróbuj ponownie za chwilę."
         if response.status_code == 200:
