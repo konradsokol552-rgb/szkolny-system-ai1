@@ -60,7 +60,7 @@ Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie 
 - Jeśli uczeń prosi o pomoc: daj wskazówkę (hint), nie rozwiązując zadania za niego.
 - Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego (używając algorytmu), napisz "Odłóżmy to zadanie na koniec", przesuń to zadanie na koniec kolejki i przejdź do kolejnego.
 -jezeli uczeni robi ponownie źle zrobione zadania, zmień treść zdania, zachowując ten sam typ. Pociesz ucznia i naprowadzaj go, ale nigdy nie dawaj gotowych odpowiedzi.
--po zakoniczeniu fazy praktyki zapytaj sie czunia czy chce powtużyć fazę pratyki.
+-po zakoniczeniu fazy praktyki zapytaj sie czunia czy chce powtuzyć fazę pratyki.
 -jezeli powie nie, przechodzisz do fazy testu końcowego.
 
 ### 3. [FAZA TESTU KOŃCOWEGO]: 
@@ -89,7 +89,7 @@ def get_db():
 
 db = get_db()
 
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=10)
 def wczytaj_profil_z_chmury(identyfikator: str):
     try:
         doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
@@ -153,8 +153,7 @@ def zapisz_profil_w_chmurze():
         "user_api_key": st.session_state.get("user_api_key", ""),
         "postep_tematow": postepy,
         "historia_czatow": historia,
-        "teorie_lekcji": st.session_state.get("teorie_lekcji", {}),
-        "ostatni_aktywny_temat": st.session_state.get("aktualny_temat", "")
+        "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
     }
     try:
         db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
@@ -171,7 +170,7 @@ def _parsuj_czas_blokady(raw_blokada) -> datetime:
         return datetime.now(STREFA_PL)
 
 # =====================================================================
-# 3. STRAŻNIK DOSTĘPU I PRZYWRACANIE SESJI
+# 3. STRAŻNIK DOSTĘPU
 # =====================================================================
 if "zalogowany_id" not in st.session_state:
     st.switch_page("app.py")
@@ -182,40 +181,33 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
-# POPRAWKA PERSYSTENCJI: Przywrócenie ostatniego tematu po odświeżeniu strony
-if "aktualny_temat" not in st.session_state:
-    ostatni_temat = profil_aktualny.get("ostatni_aktywny_temat")
-    if ostatni_temat:
-        st.session_state.aktualny_temat = ostatni_temat
-        st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {})
-        st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(ostatni_temat)
-        
-        historia = profil_aktualny.get("historia_czatow", {})
-        st.session_state.messages = historia.get(ostatni_temat, []) if isinstance(historia, dict) else []
-        
-        stan_t = profil_aktualny.get("postep_tematow", {}).get(ostatni_temat, {})
-        st.session_state.licznik_zadan = stan_t.get("licznik", 0) if isinstance(stan_t, dict) else 0
-
-aktualny_temat = st.session_state.get("aktualny_temat")
-ma_sprawdzian_w_temacie = False
-if aktualny_temat and isinstance(profil_aktualny.get("postep_tematow"), dict):
-    dane_t = profil_aktualny["postep_tematow"].get(aktualny_temat, {})
-    if isinstance(dane_t, dict) and dane_t.get("ma_sprawdzian"):
-        ma_sprawdzian_w_temacie = True
-
-w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) or ma_sprawdzian_w_temacie
-
-if not lekcja_aktywna and w_trakcie_testu:
+if not lekcja_aktywna and profil_aktualny.get("w_trakcie_testu"):
     ustaw_stan_testu(False)
-    if aktualny_temat and "postep_tematow" in st.session_state:
-        if isinstance(st.session_state.postep_tematow.get(aktualny_temat), dict):
-            st.session_state.postep_tematow[aktualny_temat]["ma_sprawdzian"] = False
-            zapisz_profil_w_chmurze()
     st.rerun()
 
 # =====================================================================
-# 4. SYSTEM ANTY-CHEAT (BEZPIECZNA DETEKCJA)
+# 4. SYSTEM ANTY-CHEAT
 # =====================================================================
+# CSS do ukrycia wyzwalacza ponownego przeładowania
+st.markdown("""
+<style>
+    div[class*="st-key-btn_ac_rerun_hidden"],
+    .st-key-btn_ac_rerun_hidden {
+        display: none !important;
+        height: 0px !important;
+        margin: 0px !important;
+        padding: 0px !important;
+        overflow: hidden !important;
+        position: absolute !important;
+        pointer-events: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
+    st.rerun()
+
+# Reakcja na sygnał oszustwa
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
@@ -230,6 +222,7 @@ if profil_aktualny.get("sygnal_oszustwa") is True:
     except Exception as e:
         st.error(f"Błąd przetwarzania kary: {e}")
 
+# Egzekwowanie blokady czasowej
 if profil_aktualny.get("blokada_do"):
     czas_blokady = _parsuj_czas_blokady(profil_aktualny["blokada_do"])
     teraz = datetime.now(STREFA_PL)
@@ -237,9 +230,11 @@ if profil_aktualny.get("blokada_do"):
     if czas_blokady > teraz:
         st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
         st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
-        st.info("⏳ Czas trwania blokady: 45 minut.")
+        st.info("⏳ czas blokady: 45min.")
         st.stop()
 
+# Wstrzykiwanie skryptu śledzącego JS podczas testu
+w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False)
 if lekcja_aktywna and w_trakcie_testu:
     try:
         project_id = st.secrets["connections"]["firestore"]["project_id"]
@@ -247,54 +242,81 @@ if lekcja_aktywna and w_trakcie_testu:
         project_id = "twoj-projekt-firestore"
 
     user_doc_id = st.session_state.zalogowany_id
-    user_api_key = st.session_state.get("user_api_key", "")
     
-    # POPRAWKA ANTY-CHEATA: Usunięto zdarzenie blur wywołujące fałszywe alarty
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
+        const targetDoc = window.parent ? window.parent.document : document;
+        const targetWin = window.parent ? window.parent : window;
+
+        function znajdzPrzycisk() {{
+            try {{
+                let btn = targetDoc.querySelector('.st-key-btn_ac_rerun_hidden button') || 
+                          targetDoc.querySelector('[class*="st-key-btn_ac_rerun_hidden"] button');
+                if (btn) return btn;
+
+                const buttons = targetDoc.querySelectorAll('button');
+                for (let b of buttons) {{
+                    if (b.innerText && b.innerText.includes("RERUN_ANTYCHEAT_TRIGGER")) {{
+                        return b;
+                    }}
+                }}
+            }} catch (e) {{
+                console.warn("Błąd wyszukiwania przycisku:", e);
+            }}
+            return null;
+        }}
+
+        function wyzwolRerunStreamlit() {{
+            const btn = znajdzPrzycisk();
+            if (btn) {{
+                btn.click();
+            }} else if (targetWin && targetWin.location) {{
+                targetWin.location.reload();
+            }}
+        }}
 
         function zglosOszustwo() {{
             if (oszustwoWyslane) return;
             oszustwoWyslane = true;
 
-            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={user_api_key}";
+            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
             const payload = JSON.stringify({{
                 "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
             }});
 
-            if (navigator.sendBeacon) {{
-                const blob = new Blob([payload], {{ type: 'application/json' }});
-                navigator.sendBeacon(url, blob);
-            }} else {{
-                fetch(url, {{
-                    method: "PATCH",
-                    headers: {{ "Content-Type": "application/json" }},
-                    body: payload,
-                    keepalive: true
-                }}).catch(err => console.error("Błąd wysyłania sygnału:", err));
-            }}
-
-            setTimeout(() => {{
-                try {{
-                    window.top.location.reload();
-                }} catch (e) {{
-                    window.location.reload();
-                }}
-            }}, 500);
+            fetch(url, {{
+                method: "PATCH",
+                headers: {{ "Content-Type": "application/json" }},
+                body: payload,
+                keepalive: true
+            }});
         }}
 
-        document.addEventListener("visibilitychange", function() {{
-            if (document.visibilityState === 'hidden') {{
+        targetDoc.addEventListener("visibilitychange", function() {{
+            if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
+            }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
+                wyzwolRerunStreamlit();
             }}
         }});
+
+        targetWin.addEventListener("focus", function() {{
+            if (oszustwoWyslane) wyzwolRerunStreamlit();
+        }});
+
+        targetWin.addEventListener("beforeunload", function(e) {{
+            zglosOszustwo();
+        }});
     </script>
-    """, height=0, width=0)
+    """, height=0)
 
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
 # =====================================================================
+import time
+import random
+
 def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) -> str:
     api_key = st.session_state.get("user_api_key")
     if not api_key:
@@ -310,9 +332,11 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         for m in historia_rozmowy[-10:]
     ]
     
+    # ZABEZPIECZENIE RÓL: Gemini wymaga, aby pierwsza wiadomość w historii należała do 'user'
     if contents and contents[0]["role"] == "model":
         contents.insert(0, {"role": "user", "parts": [{"text": "Rozpoczynamy lekcję."}]})
 
+    # UNIKALNE ZIARNO: Gwarantuje unikalność pytań przy każdym wywołaniu
     ziarno = f"{time.time()}_{random.randint(1000, 9999)}"
 
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
@@ -348,7 +372,6 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         return f"❌ Błąd API ({response.status_code}): {response.text}"
     except Exception as e:
         return f"❌ Błąd połączenia: {str(e)}"
-
 # =====================================================================
 # 6. PASEK BOCZNY (MENU I KONTROLA SESJI)
 # =====================================================================
@@ -425,15 +448,14 @@ with st.sidebar:
                 stan_tematu = profil_aktualny.get("postep_tematow", {}).get(wybor_tematu, {})
                 st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
                 
-                if isinstance(stan_tematu, dict) and stan_tematu.get("ma_sprawdzian"):
-                    ustaw_stan_testu(True)
-
                 historia = profil_aktualny.get("historia_czatow", {})
                 st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
                 
                 if not st.session_state.messages:
                     with st.spinner("Inicjalizacja lekcji z AI..."):
                         instrukcja = "Rozpoczynamy lekcję. Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
+                        
+                        # Zapisujemy intencję użytkownika, żeby utrzymać prawidłowy priorytet ról w API
                         st.session_state.messages = [{"role": "user", "content": instrukcja}]
                         
                         odp = zapytaj_ai(st.session_state.messages, wybor_tematu, 0)
@@ -444,13 +466,14 @@ with st.sidebar:
                                 st.session_state.teorie_lekcji = {}
                             st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
                             
+                            # Nadpisujemy historię czatu czystym zadaniem od AI
                             zadanie_tresc = odp.split("[ZADANIE]")[1].strip()
                             st.session_state.messages = [{"role": "assistant", "content": zadanie_tresc}]
+                            zapisz_profil_w_chmurze()
                         else:
                             st.session_state.teoria_lekcji = odp
                             st.session_state.messages = [{"role": "assistant", "content": odp}]
-                
-                zapisz_profil_w_chmurze()
+                            zapisz_profil_w_chmurze()
                 st.rerun()
 
 # =====================================================================
@@ -527,16 +550,16 @@ else:
         st.progress(min(licznik / 8, 1.0))
         st.caption(f"Wykonano zadań: {licznik} / 8")
         
-        czy_sprawdzian = w_trakcie_testu or any("sprawdzający" in m["content"] for m in st.session_state.get("messages", []))
+        czy_sprawdzian = any("sprawdzający" in m["content"] for m in st.session_state.messages)
         
         if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
             with st.expander("📘 MATERIAŁY", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
                 
-        # Wyświetlanie historii konwersacji
-        for msg in st.session_state.get("messages", []):
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
+        if st.session_state.messages:
+            ostatnia = st.session_state.messages[-1]
+            with st.chat_message(ostatnia["role"]):
+                st.markdown(ostatnia["content"])
                 
         if prompt := st.chat_input("Napisz odpowiedź..."):
             stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
@@ -555,46 +578,31 @@ else:
                 if odp.startswith("❌"):
                     st.error(f"AI zwróciło błąd: {odp}")
                 else:
-                    temat_aktyw = st.session_state.aktualny_temat
-                    
-                    # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
                     if "[SPRAWDZIAN]" in odp:
                         ustaw_stan_testu(True)
-                        if "postep_tematow" not in st.session_state:
-                            st.session_state.postep_tematow = {}
-                        if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
-                            st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
-                            
-                        st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
                         odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
-                    # WYKRYCIE ZAKOŃCZENIA SPRAWDZIANU
                     if "[KONIEC SPRAWDZIANU]" in odp:
                         ustaw_stan_testu(False)
-                        if temat_aktyw in st.session_state.postep_tematow and isinstance(st.session_state.postep_tematow[temat_aktyw], dict):
-                            st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
-                            
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
                         
                         if st.session_state.licznik_zadan >= 8:
-                            st.session_state.postep_tematow[temat_aktyw] = {
+                            st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                                 "status": "ZALICZONY",
                                 "data": datetime.now().strftime("%Y-%m-%d"),
-                                "licznik": st.session_state.licznik_zadan,
-                                "ma_sprawdzian": False
+                                "licznik": st.session_state.licznik_zadan
                             }
                             st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                     
                     if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
-                        st.session_state.postep_tematow[temat_aktyw] = {
+                        st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": st.session_state.get("licznik_zadan", 8),
-                            "ma_sprawdzian": False
+                            "licznik": st.session_state.get("licznik_zadan", 8)
                         }
                     
                     czysta_odp = odp.replace("[ZALICZONE]", "").strip()
@@ -602,7 +610,7 @@ else:
                     
                     if not isinstance(st.session_state.get("historia_czatow"), dict):
                         st.session_state.historia_czatow = {}
-                    st.session_state.historia_czatow[temat_aktyw] = st.session_state.messages
+                    st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
                     
                     zapisz_profil_w_chmurze()
                     st.rerun()
