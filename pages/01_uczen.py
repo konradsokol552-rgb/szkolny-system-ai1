@@ -18,9 +18,6 @@ COL_PRZEDMIOTY = "przedmioty"
 COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
 
-# Użyj poprawnej nazwy modelu Gemini (np. gemini-1.5-flash lub gemini-2.0-flash)
-MODEL_NAME = "gemini-1.5-flash"
-
 SYSTEM_PROMPT = """
 Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie ucznia przez wybrany temat według ściśle określonego algorytmu.
 
@@ -185,7 +182,7 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
-# Przywrócenie ostatniego tematu po odświeżeniu strony
+# POPRAWKA PERSYSTENCJI: Przywrócenie ostatniego tematu po odświeżeniu strony
 if "aktualny_temat" not in st.session_state:
     ostatni_temat = profil_aktualny.get("ostatni_aktywny_temat")
     if ostatni_temat:
@@ -217,7 +214,7 @@ if not lekcja_aktywna and w_trakcie_testu:
     st.rerun()
 
 # =====================================================================
-# 4. SYSTEM ANTY-CHEAT (INTERFEJS BLOKADY)
+# 4. SYSTEM ANTY-CHEAT (BEZPIECZNA DETEKCJA)
 # =====================================================================
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
@@ -238,51 +235,29 @@ if profil_aktualny.get("blokada_do"):
     teraz = datetime.now(STREFA_PL)
     
     if czas_blokady > teraz:
-        st.markdown(
-            """
-            <style>
-                [data-testid="stSidebar"] { display: none !important; }
-                [data-testid="stHeader"] { display: none !important; }
-                .main .block-container { max-width: 750px; padding-top: 5rem; }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-
-        st.title("🚨 AKTYWNA BLOKADA SYSTEMOWA")
-        st.error("Wykryto opuszczenie karty lub utratę fokusu w trakcie trwania sprawdzianu!")
-        st.divider()
-
-        pozostaly_czas = czas_blokady - teraz
-        minuty = int(pozostaly_czas.total_seconds() // 60)
-        sekundy = int(pozostaly_czas.total_seconds() % 60)
-
-        c1, c2 = st.columns(2)
-        c1.metric("Blokada aktywna do", czas_blokady.strftime('%H:%M:%S'))
-        c2.metric("Pozostało czasu", f"{minuty}m {sekundy}s")
-
-        st.warning("Nie masz dostępu do menu, czatu ani innych tematów. Zaloguj się ponownie po upływie kary.")
+        st.error("🚨 WYKRYTO OPUSZCZENIE KARTY LUB UTRATĘ FOKUSU! 🚨")
+        st.warning(f"Twój dostęp do lekcji został zablokowany do godziny: **{czas_blokady.strftime('%H:%M:%S')}**")
+        st.info("⏳ Czas trwania blokady: 45 minut.")
         st.stop()
 
 if lekcja_aktywna and w_trakcie_testu:
     try:
         project_id = st.secrets["connections"]["firestore"]["project_id"]
-        # Pobieramy dedykowany Web API Key dla Firebase/Firestore z secrets
-        firestore_web_key = st.secrets["connections"]["firestore"].get("web_api_key", st.session_state.get("user_api_key", ""))
     except Exception:
         project_id = "twoj-projekt-firestore"
-        firestore_web_key = ""
 
     user_doc_id = st.session_state.zalogowany_id
+    user_api_key = st.session_state.get("user_api_key", "")
     
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
+
         function zglosOszustwo() {{
             if (oszustwoWyslane) return;
             oszustwoWyslane = true;
 
-            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={firestore_web_key}";
+            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={user_api_key}";
             const payload = JSON.stringify({{
                 "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
             }});
@@ -296,8 +271,16 @@ if lekcja_aktywna and w_trakcie_testu:
                     headers: {{ "Content-Type": "application/json" }},
                     body: payload,
                     keepalive: true
-                }});
+                }}).catch(err => console.error("Błąd wysyłania sygnału:", err));
             }}
+
+            setTimeout(() => {{
+                try {{
+                    window.top.location.reload();
+                }} catch (e) {{
+                    window.location.reload();
+                }}
+            }}, 500);
         }}
 
         document.addEventListener("visibilitychange", function() {{
@@ -316,7 +299,7 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
     if not api_key:
         return "❌ BŁĄD: Brak klucza API w profilu!"
         
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL_NAME}:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
     
     contents = [
         {
@@ -430,7 +413,6 @@ with st.sidebar:
             disabled=w_trakcie_testu
         )
         
-        # POPRAWIONE WCIĘCIA DLA PRZYCISKU
         if st.button("Rozpocznij lekcję", use_container_width=True, disabled=w_trakcie_testu):
             if not lekcja_aktywna:
                 st.error("Nauczyciel nie aktywował jeszcze lekcji.")
@@ -442,7 +424,7 @@ with st.sidebar:
                 stan_tematu = profil_aktualny.get("postep_tematow", {}).get(wybor_tematu, {})
                 st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
                 
-                if isinstance(stan_tematu, dict) and stan_tematu.get("ma_sprawdzian") is True:
+                if isinstance(stan_tematu, dict) and stan_tematu.get("ma_sprawdzian"):
                     ustaw_stan_testu(True)
 
                 historia = profil_aktualny.get("historia_czatow", {})
@@ -579,12 +561,11 @@ else:
                     
                     # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
                     if "[SPRAWDZIAN]" in odp:
+                        ustaw_stan_testu(True)
                         if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
                             st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
-                        
+                            
                         st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
-                        ustaw_stan_testu(True)
-                        zapisz_profil_w_chmurze()
                         odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
                     # WYKRYCIE ZAKOŃCZENIA SPRAWDZIANU
@@ -595,16 +576,24 @@ else:
                             
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
-                    # OBSŁUGA ZALICZANIA ZADAŃ I UKOŃCZENIA TEMATU
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
+                        
+                        if st.session_state.licznik_zadan >= 8:
+                            st.session_state.postep_tematow[temat_aktyw] = {
+                                "status": "ZALICZONY",
+                                "data": datetime.now().strftime("%Y-%m-%d"),
+                                "licznik": st.session_state.licznik_zadan,
+                                "ma_sprawdzian": False
+                            }
+                            st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                     
                     if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
                         st.session_state.postep_tematow[temat_aktyw] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": max(st.session_state.get("licznik_zadan", 8), 8),
+                            "licznik": st.session_state.get("licznik_zadan", 8),
                             "ma_sprawdzian": False
                         }
                     
