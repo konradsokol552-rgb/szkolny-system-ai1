@@ -1,4 +1,4 @@
-user_code = """from datetime import datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
@@ -18,7 +18,7 @@ COL_PRZEDMIOTY = "przedmioty"
 COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
 
-SYSTEM_PROMPT = \"\"\"
+SYSTEM_PROMPT = """
 Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie ucznia przez wybrany temat według ściśle określonego algorytmu.
 
 ## GŁÓWNE ZASADY BEZPIECZEŃSTWA:
@@ -72,7 +72,7 @@ Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie 
   -> "TAK": Sprawdź test i na początku wiadomości ze sprawdzzeniem napisz [KONIEC SPRAWDZIANU].
     * 100% punktów -> Wyświetl: "GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie."
     * <100% punktów -> Wyświetl: "Test niezaliczony na 100%. Pomijamy ten temat na później" + wyjaśnij błędy. Oznacz temat jako "POMINIĘTY".
-\"\"\"
+"""
 
 # =====================================================================
 # 2. BAZA DANYCH I CACHOWANE FUNKCJE POMOCNICZE
@@ -249,8 +249,7 @@ if lekcja_aktywna and w_trakcie_testu:
     user_doc_id = st.session_state.zalogowany_id
     user_api_key = st.session_state.get("user_api_key", "")
     
-    # POPRAWKA ANTY-CHEATA: Usunięto zdarzenie blur wywołujące fałszywe alarty
-    components.html(f\"\"\"
+    components.html(f"""
     <script>
         let oszustwoWyslane = false;
 
@@ -290,7 +289,7 @@ if lekcja_aktywna and w_trakcie_testu:
             }}
         }});
     </script>
-    \"\"\", height=0, width=0)
+    """, height=0, width=0)
 
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
@@ -317,21 +316,21 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
 
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
         dynamiczny_kontekst = (
-            f"AKTUALNY TEMAT: {temat_kontekst}\\n"
-            f"STATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie.\\n"
+            f"AKTUALNY TEMAT: {temat_kontekst}\n"
+            f"STATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie.\n"
             f"ZIARNO_LOSOWOSCI: {ziarno}"
         )
     else:
         dynamiczny_kontekst = (
-            f"AKTUALNY TEMAT: {temat_kontekst}\\n"
-            f"STATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii.\\n"
+            f"AKTUALNY TEMAT: {temat_kontekst}\n"
+            f"STATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii.\n"
             f"ZIARNO_LOSOWOSCI: {ziarno}"
         )
 
     payload = {
         "contents": contents,
         "systemInstruction": {
-            "parts": [{"text": f"{SYSTEM_PROMPT}\\n\\n{dynamiczny_kontekst}"}]
+            "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{dynamiczny_kontekst}"}]
         },
         "generationConfig": {
             "temperature": 0.7,
@@ -539,6 +538,9 @@ else:
                 st.markdown(msg["content"])
                 
         if prompt := st.chat_input("Napisz odpowiedź..."):
+            if "postep_tematow" not in st.session_state:
+                st.session_state.postep_tematow = {}
+                
             stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
             status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
             
@@ -560,8 +562,6 @@ else:
                     # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
                     if "[SPRAWDZIAN]" in odp:
                         ustaw_stan_testu(True)
-                        if "postep_tematow" not in st.session_state:
-                            st.session_state.postep_tematow = {}
                         if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
                             st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
                             
@@ -606,10 +606,3 @@ else:
                     
                     zapisz_profil_w_chmurze()
                     st.rerun()
-"""
-
-try:
-    compile(user_code, '<string>', 'exec')
-    print("Syntax compiled successfully!")
-except Exception as e:
-    print(f"Compilation error: {e}")
