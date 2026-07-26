@@ -2,8 +2,8 @@ import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import firestore
 
-# --- 1. STAŁE I BAZA DANYCH (Bezpieczne do importowania) ---
-COL_UCZNIOWIE = "postepy_uczniow"
+# --- 1. STAŁE I BAZA DANYCH ---
+NAZWA_SZKOLY = "szkola_podstawowa_1"  # Nazwa Twojego dokumentu szkoły w Firestore
 HASLO_SYSTEMOWE = "TwojeTajneHaslo123"
 
 @st.cache_resource
@@ -17,28 +17,23 @@ def get_db():
 
 db = get_db()
 
+# Referencja do podkolekcji 'konta' w wybranej szkole
+def pobierz_kolekcje_kont():
+    return db.collection("szkola").document(NAZWA_SZKOLY).collection("konta")
+
 # --- 2. FUNKCJE POMOCNICZE WIZUALNE I LOGICZNE ---
 def ustaw_czysty_interfejs(ukryj_sidebar=False):
-    """Maksymalnie agresywna wersja wycinania elementów interfejsu Streamlit"""
     style = """
         <style>
-        # --- UKRYWANIE STOPKI (Wszystkie możliwe selektory) ---
         footer {display: none !important; visibility: hidden !important; height: 0 !important;}
         [data-testid="stFooter"] {display: none !important; visibility: hidden !important;}
-        footer a {display: none !important;}
-        
-        # --- UKRYWANIE PRZYCISKU 'Hosted with Streamlit' / 'Deploy' ---
         [data-testid="stViewerBadge"] {display: none !important; visibility: hidden !important;}
         .stViewerBadge {display: none !important; visibility: hidden !important;}
         .stAppDeployButton {display: none !important; visibility: hidden !important;}
-        
-        # --- CZYSZCZENIE POZOSTAŁEGO PO STOPCE MARGINESU ---
         .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important;}
         """
-        
     if ukryj_sidebar:
         style += """
-        /* Ukrywa boczny pasek menu */
         [data-testid="stSidebar"] {display: none !important;}
         [data-testid="collapsedSidebar"] {display: none !important;}
         """
@@ -46,7 +41,7 @@ def ustaw_czysty_interfejs(ukryj_sidebar=False):
     st.markdown(style, unsafe_allow_html=True)
 
 def zaloguj_uzytkownika(id_input):
-    doc_ref = db.collection(COL_UCZNIOWIE).document(id_input)
+    doc_ref = pobierz_kolekcje_kont().document(id_input)
     doc = doc_ref.get()
     
     if not doc.exists:
@@ -69,15 +64,12 @@ def stworz_konto(id_input, typ, klucz_api):
         "historia_czatow": {},
         "rola": typ
     }
-    db.collection(COL_UCZNIOWIE).document(id_input).set(nowy_profil)
+    pobierz_kolekcje_kont().document(id_input).set(nowy_profil)
 
 
-# --- 3. INTERFEJS LOGOWANIA (Uruchamia się tylko jako główny skrypt) ---
+# --- 3. INTERFEJS LOGOWANIA ---
 if __name__ == "__main__":
-    # ZASADA: To polecenie MUSI być PIERWSZE w tym bloku
     st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centered")
-
-    # Teraz bezpiecznie odpalamy ukrywanie elementów i bocznego paska
     ustaw_czysty_interfejs(ukryj_sidebar=True)
 
     st.title("🏫 Logowanie do Systemu")
@@ -86,17 +78,20 @@ if __name__ == "__main__":
     # LOGOWANIE
     if st.button("Zaloguj"):
         if id_input and zaloguj_uzytkownika(id_input):
-            if st.session_state.role == "nauczyciel":
+            rola = st.session_state.role
+            if rola == "dyrektor":
+                st.switch_page("pages/03_dyrektor.py")
+            elif rola == "nauczyciel":
                 st.switch_page("pages/02_nauczyciel.py")
             else:
                 st.switch_page("pages/01_uczen.py")
         else:
             st.error("Konto nie istnieje lub nazwa jest pusta.")
 
-    # TWORZENIE KONTA
+    # TWORZENIE KONTA (Awaryjne / Początkowe)
     with st.expander("Tworzenie konta"):
         haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
-        typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel"])
+        typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel", "dyrektor"])
         nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
         
         if st.button("Zarejestruj konto"):
@@ -105,5 +100,5 @@ if __name__ == "__main__":
             elif not id_input or not nowy_klucz_api:
                 st.error("Wypełnij nazwę konta i klucz API!")
             else:
-                stworz_konto(id_input, typ_konta, nowy_klucz_api)
+                st.stworz_konto(id_input, typ_konta, nowy_klucz_api)
                 st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
