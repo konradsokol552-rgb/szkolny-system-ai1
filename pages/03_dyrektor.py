@@ -94,7 +94,7 @@ with zakladka1:
 
 # --- ZAKŁADKA 2: PODGLĄD I EDYCJA KONT ---
 with zakladka2:
-    st.subheader("`Lista kont`")
+    st.subheader("Lista kont")
     
     # Wyciąganie wszystkich kont z podkolekcji
     docs = konta_ref.stream()
