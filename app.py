@@ -100,5 +100,5 @@ if __name__ == "__main__":
             elif not id_input or not nowy_klucz_api:
                 st.error("Wypełnij nazwę konta i klucz API!")
             else:
-                st.stworz_konto(id_input, typ_konta, nowy_klucz_api)
+                stworz_konto(id_input, typ_konta, nowy_klucz_api)
                 st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
