@@ -615,7 +615,7 @@ else:
                             }
                             st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                     
-                    if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
+                    if st.session_state.licznik_zadan >= 8 and "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
