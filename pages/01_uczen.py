@@ -249,7 +249,6 @@ if lekcja_aktywna and w_trakcie_testu:
     user_doc_id = st.session_state.zalogowany_id
     user_api_key = st.session_state.get("user_api_key", "")
     
-    # POPRAWKA ANTY-CHEATA: Usunięto zdarzenie blur wywołujące fałszywe alarty
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
@@ -539,6 +538,9 @@ else:
                 st.markdown(msg["content"])
                 
         if prompt := st.chat_input("Napisz odpowiedź..."):
+            if "postep_tematow" not in st.session_state:
+                st.session_state.postep_tematow = {}
+                
             stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
             status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
             
@@ -560,8 +562,6 @@ else:
                     # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
                     if "[SPRAWDZIAN]" in odp:
                         ustaw_stan_testu(True)
-                        if "postep_tematow" not in st.session_state:
-                            st.session_state.postep_tematow = {}
                         if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
                             st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
                             
