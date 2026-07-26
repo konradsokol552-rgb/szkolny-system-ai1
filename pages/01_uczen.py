@@ -1,13 +1,12 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import pandas as pd
-import requests
 import streamlit as st
 import streamlit.components.v1 as components
 from google.cloud import firestore
 from google.oauth2 import service_account
-import time
-import random
+
+from gemini_backend import zapytaj_ai as backend_zapytaj_ai
 
 # =====================================================================
 # 1. STAŁE I KONFIGURACJA
@@ -317,64 +316,9 @@ if lekcja_aktywna and w_trakcie_testu:
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
 # =====================================================================
-import time
-import random
-
 def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) -> str:
-    api_key = st.session_state.get("user_api_key")
-    if not api_key:
-        return "❌ BŁĄD: Brak klucza API w profilu!"
-        
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key={api_key}"
-    
-    contents = [
-        {
-            "role": "user" if m["role"] == "user" else "model",
-            "parts": [{"text": m["content"]}]
-        }
-        for m in historia_rozmowy[-10:]
-    ]
-    
-    # ZABEZPIECZENIE RÓL: Gemini wymaga, aby pierwsza wiadomość w historii należała do 'user'
-    if contents and contents[0]["role"] == "model":
-        contents.insert(0, {"role": "user", "parts": [{"text": "Rozpoczynamy lekcję."}]})
+    return backend_zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan, SYSTEM_PROMPT)
 
-    # UNIKALNE ZIARNO: Gwarantuje unikalność pytań przy każdym wywołaniu
-    ziarno = f"{time.time()}_{random.randint(1000, 9999)}"
-
-    if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
-        dynamiczny_kontekst = (
-            f"AKTUALNY TEMAT: {temat_kontekst}\n"
-            f"STATUS: Początek lekcji. Wygeneruj FAZĘ TEORII, a następnie pierwsze zadanie.\n"
-            f"ZIARNO_LOSOWOSCI: {ziarno}"
-        )
-    else:
-        dynamiczny_kontekst = (
-            f"AKTUALNY TEMAT: {temat_kontekst}\n"
-            f"STATUS: Uczeń rozwiązał poprawnie {licznik_zadan} z 8 zadań. Jesteś w FAZIE PRAKTYKI. Podaj wyłącznie zadanie, nie powtarzaj teorii.\n"
-            f"ZIARNO_LOSOWOSCI: {ziarno}"
-        )
-
-    payload = {
-        "contents": contents,
-        "systemInstruction": {
-            "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{dynamiczny_kontekst}"}]
-        },
-        "generationConfig": {
-            "temperature": 0.7,
-            "topP": 0.95
-        }
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=20)
-        if response.status_code == 429:
-            return "❌ Przeciążenie serwera (429). Spróbuj ponownie za chwilę."
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        return f"❌ Błąd API ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"❌ Błąd połączenia: {str(e)}"
 # =====================================================================
 # 6. PASEK BOCZNY (MENU I KONTROLA SESJI)
 # =====================================================================
