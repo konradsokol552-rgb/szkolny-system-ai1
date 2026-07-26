@@ -94,7 +94,7 @@ with zakladka1:
 
 # --- ZAKŁADKA 2: PODGLĄD I EDYCJA KONT ---
 with zakladka2:
-    st.subheader("Lista kont w bazie: `szkola -> konta`")
+    st.subheader("`Lista kont`")
     
     # Wyciąganie wszystkich kont z podkolekcji
     docs = konta_ref.stream()
@@ -129,7 +129,7 @@ with zakladka2:
 # --- ZAKŁADKA 3: ZARZĄDZANIE PRZEDMIOTAMI ---
 with zakladka3:
     st.subheader("Zarządzanie przedmiotami i tematami")
-    st.caption("Tematy wpisuj jeden pod drugim. Zmiany zapisują się w Firestore pod ścieżką szkoła → szkola_podstawowa_1 → przedmioty.")
+    st.caption("Tematy wpisuj jeden pod drugim!!!")
 
     przedmioty = pobierz_przedmioty()
 
