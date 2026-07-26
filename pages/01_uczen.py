@@ -12,7 +12,8 @@ from gemini_backend import zapytaj_ai as backend_zapytaj_ai
 # 1. STAŁE I KONFIGURACJA
 # =====================================================================
 STREFA_PL = ZoneInfo("Europe/Warsaw")
-COL_UCZNIOWIE = "postepy_uczniow"
+NAZWA_SZKOLY = "szkola_podstawowa_1"
+COL_KONTA = "konta"
 COL_PRZEDMIOTY = "przedmioty"
 COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
@@ -88,10 +89,17 @@ def get_db():
 
 db = get_db()
 
+def get_konta_ref():
+    return db.collection("szkola").document(NAZWA_SZKOLY).collection(COL_KONTA)
+
+
+def get_konto_ref(identyfikator: str):
+    return get_konta_ref().document(identyfikator)
+
 @st.cache_data(ttl=10)
 def wczytaj_profil_z_chmury(identyfikator: str):
     try:
-        doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
+        doc = get_konto_ref(identyfikator).get()
         return doc.to_dict() if doc.exists else {}
     except Exception as e:
         st.error(f"Nie udało się wczytać profilu: {e}")
@@ -127,7 +135,7 @@ def pobierz_strukture() -> dict:
 
 def ustaw_stan_testu(w_trakcie: bool):
     if "zalogowany_id" in st.session_state:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set(
+        get_konto_ref(st.session_state.zalogowany_id).set(
             {"w_trakcie_testu": w_trakcie}, merge=True
         )
         czysc_cache_profilu()
@@ -150,12 +158,13 @@ def zapisz_profil_w_chmurze():
 
     dane_do_zapisu = {
         "user_api_key": st.session_state.get("user_api_key", ""),
+        "rola": st.session_state.get("role", "uczen"),
         "postep_tematow": postepy,
         "historia_czatow": historia,
         "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
     }
     try:
-        db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
+        get_konto_ref(identyfikator).set(dane_do_zapisu, merge=True)
         czysc_cache_profilu()
     except Exception as e:
         st.error(f"Błąd zapisu danych: {e}")
@@ -205,7 +214,7 @@ st.markdown("""
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
     try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+        get_konto_ref(st.session_state.zalogowany_id).set({
             "sygnal_oszustwa": True
         }, merge=True)
         czysc_cache_profilu()
@@ -218,7 +227,7 @@ if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
     try:
-        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+        get_konto_ref(st.session_state.zalogowany_id).set({
             "sygnal_oszustwa": False,
             "blokada_do": czas_kary
         }, merge=True)
@@ -482,7 +491,7 @@ else:
 
     if stan_pomocy:
         if st.button("🟢 Odwołaj wezwanie pomocy", use_container_width=True):
-            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({
+            get_konto_ref(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": False,
                 "aktualny_temat_problemu": ""
             })
@@ -499,7 +508,7 @@ else:
             if isinstance(postepy[temat], dict):
                 postepy[temat]["licznik_sos"] = postepy[temat].get("licznik_sos", 0) + 1
             
-            db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).update({
+            get_konto_ref(st.session_state.zalogowany_id).update({
                 "potrzebuje_pomocy": True,
                 "aktualny_temat_problemu": temat,
                 "postep_tematow": postepy

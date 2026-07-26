@@ -7,7 +7,8 @@ from zoneinfo import ZoneInfo
 # --- KONFIGURACJA ---
 STREFA_PL = ZoneInfo("Europe/Warsaw")
 # Definicja stałych - koniec z literówkami w nazwach kolekcji!
-COL_POSTEPY = "postepy_uczniow"
+NAZWA_SZKOLY = "szkola_podstawowa_1"
+COL_KONTA = "konta"
 COL_LEKCJE = "ustawienia_lekcji"
 DOC_LEKCJA_GLOBAL = "globalna"
 
@@ -21,15 +22,19 @@ def get_db():
 db = get_db()
 
 # --- FUNKCJE POMOCNICZE (LOGIKA BAZY) ---
+def pobierz_konta_ref():
+    return db.collection("szkola").document(NAZWA_SZKOLY).collection(COL_KONTA)
+
+
 def pobierz_uczniow():
     try:
-        return list(db.collection(COL_POSTEPY).where("rola", "==", "uczen").stream())
+        return list(pobierz_konta_ref().where("rola", "==", "uczen").stream())
     except Exception as e:
         st.error("Błąd połączenia z bazą uczniów.")
         return []
 
 def zresetuj_dane_ucznia(uczen_id):
-    doc_ref = db.collection(COL_POSTEPY).document(uczen_id)
+    doc_ref = pobierz_konta_ref().document(uczen_id)
     doc_ref.update({
         "postep_tematow": {},
         "historia_czatow": {},
@@ -89,7 +94,7 @@ if st.button("Aktywuj lekcję na 1 godzinę"):
 # Wyświetlanie szczegółów ucznia
 if "wybrany_uczen_id" in st.session_state:
     uczen_id = st.session_state.wybrany_uczen_id
-    doc = db.collection(COL_POSTEPY).document(uczen_id).get()
+    doc = pobierz_konta_ref().document(uczen_id).get()
     
     if doc.exists:
         dane = doc.to_dict()
