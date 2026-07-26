@@ -245,9 +245,27 @@ if lekcja_aktywna and w_trakcie_testu:
     components.html("""
     <script>
         let oszustwoWyslane = false;
+        let wakeLock = null;
+
         const targetDoc = window.parent ? window.parent.document : document;
         const targetWin = window.parent ? window.parent : window;
 
+        // --- 1. ZABEZPIECZENIE PRZED WYGASANIEM EKRANU (WAKE LOCK) ---
+        async function aktywujWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log("🔒 Wake Lock: Ekran nie zgaśnie podczas testu.");
+                }
+            } catch (err) {
+                console.warn("Nie udało się aktywować Wake Lock:", err);
+            }
+        }
+
+        // Odpalana od razu po wejściu w test
+        aktywujWakeLock();
+
+        // --- 2. LOGIKA ODNALEZIENIA PRZYCISKU RERUN ---
         function znajdzPrzycisk() {
             const dokumenty = [document];
             try {
@@ -295,16 +313,18 @@ if lekcja_aktywna and w_trakcie_testu:
             wyzwolRerunStreamlit();
         }
 
+        // --- 3. NASŁUCHIWANIE ZDARZEŃ (TYLKO REALE UKRYCIE KARTY) ---
         targetDoc.addEventListener("visibilitychange", function() {
             if (targetDoc.visibilityState === 'hidden') {
                 zglosOszustwo();
-            } else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {
-                wyzwolRerunStreamlit();
+            } else if (targetDoc.visibilityState === 'visible') {
+                // Po powrocie do widocznej karty upewniamy się, że blokada ekranu nadal działa
+                if (!oszustwoWyslane) {
+                    aktywujWakeLock();
+                } else {
+                    wyzwolRerunStreamlit();
+                }
             }
-        });
-
-        targetWin.addEventListener("focus", function() {
-            if (oszustwoWyslane) wyzwolRerunStreamlit();
         });
 
         targetWin.addEventListener("beforeunload", function(e) {
