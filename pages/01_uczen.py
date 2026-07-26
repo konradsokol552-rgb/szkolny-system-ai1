@@ -205,6 +205,13 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
+    try:
+        db.collection(COL_UCZNIOWIE).document(st.session_state.zalogowany_id).set({
+            "sygnal_oszustwa": True
+        }, merge=True)
+        czysc_cache_profilu()
+    except Exception as e:
+        st.error(f"Błąd zgłoszenia oszustwa: {e}")
     st.rerun()
 
 # Reakcja na sygnał oszustwa
@@ -242,6 +249,7 @@ if lekcja_aktywna and w_trakcie_testu:
         project_id = "twoj-projekt-firestore"
 
     user_doc_id = st.session_state.zalogowany_id
+    user_api_key = st.session_state.get("user_api_key", "")
     
     components.html(f"""
     <script>
@@ -280,7 +288,7 @@ if lekcja_aktywna and w_trakcie_testu:
             if (oszustwoWyslane) return;
             oszustwoWyslane = true;
 
-            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
+            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={user_api_key}";
             const payload = JSON.stringify({{
                 "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
             }});
@@ -447,6 +455,8 @@ with st.sidebar:
                 
                 stan_tematu = profil_aktualny.get("postep_tematow", {}).get(wybor_tematu, {})
                 st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
+                if isinstance(stan_tematu, dict) and stan_tematu.get("ma_sprawdzian"):
+                    ustaw_stan_testu(True)
                 
                 historia = profil_aktualny.get("historia_czatow", {})
                 st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
@@ -573,17 +583,25 @@ else:
             
             with st.spinner("Myślę..."):
                 obecny_licznik = st.session_state.get("licznik_zadan", 0)
-                odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
+                temat_aktyw = st.session_state.aktualny_temat
+                odp = zapytaj_ai(st.session_state.messages, temat_aktyw, obecny_licznik)
                 
                 if odp.startswith("❌"):
                     st.error(f"AI zwróciło błąd: {odp}")
                 else:
                     if "[SPRAWDZIAN]" in odp:
+                        if "postep_tematow" not in st.session_state:
+                            st.session_state.postep_tematow = {}
+                        if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
+                            st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie", "licznik": obecny_licznik}
+                        st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
                         ustaw_stan_testu(True)
                         odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
                     if "[KONIEC SPRAWDZIANU]" in odp:
                         ustaw_stan_testu(False)
+                        if "postep_tematow" in st.session_state and isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
+                            st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
                     if "[ZALICZONE]" in odp:
