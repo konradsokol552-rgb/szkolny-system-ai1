@@ -60,7 +60,7 @@ Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie 
 - Jeśli uczeń prosi o pomoc: daj wskazówkę (hint), nie rozwiązując zadania za niego.
 - Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego (używając algorytmu), napisz "Odłóżmy to zadanie na koniec", przesuń to zadanie na koniec kolejki i przejdź do kolejnego.
 -jezeli uczeni robi ponownie źle zrobione zadania, zmień treść zdania, zachowując ten sam typ. Pociesz ucznia i naprowadzaj go, ale nigdy nie dawaj gotowych odpowiedzi.
--po zakoniczeniu fazy praktyki zapytaj sie czunia czy chce powtuzyć fazę pratyki.
+-po zakoniczeniu fazy praktyki zapytaj sie czunia czy chce powtużyć fazę pratyki.
 -jezeli powie nie, przechodzisz do fazy testu końcowego.
 
 ### 3. [FAZA TESTU KOŃCOWEGO]: 
@@ -153,7 +153,8 @@ def zapisz_profil_w_chmurze():
         "user_api_key": st.session_state.get("user_api_key", ""),
         "postep_tematow": postepy,
         "historia_czatow": historia,
-        "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
+        "teorie_lekcji": st.session_state.get("teorie_lekcji", {}),
+        "ostatni_aktywny_temat": st.session_state.get("aktualny_temat", "")
     }
     try:
         db.collection(COL_UCZNIOWIE).document(identyfikator).set(dane_do_zapisu, merge=True)
@@ -170,7 +171,7 @@ def _parsuj_czas_blokady(raw_blokada) -> datetime:
         return datetime.now(STREFA_PL)
 
 # =====================================================================
-# 3. STRAŻNIK DOSTĘPU
+# 3. STRAŻNIK DOSTĘPU I PRZYWRACANIE SESJI
 # =====================================================================
 if "zalogowany_id" not in st.session_state:
     st.switch_page("app.py")
@@ -181,6 +182,20 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
+# POPRAWKA PERSYSTENCJI: Przywrócenie ostatniego tematu po odświeżeniu strony
+if "aktualny_temat" not in st.session_state:
+    ostatni_temat = profil_aktualny.get("ostatni_aktywny_temat")
+    if ostatni_temat:
+        st.session_state.aktualny_temat = ostatni_temat
+        st.session_state.teorie_lekcji = profil_aktualny.get("teorie_lekcji", {})
+        st.session_state.teoria_lekcji = st.session_state.teorie_lekcji.get(ostatni_temat)
+        
+        historia = profil_aktualny.get("historia_czatow", {})
+        st.session_state.messages = historia.get(ostatni_temat, []) if isinstance(historia, dict) else []
+        
+        stan_t = profil_aktualny.get("postep_tematow", {}).get(ostatni_temat, {})
+        st.session_state.licznik_zadan = stan_t.get("licznik", 0) if isinstance(stan_t, dict) else 0
+
 aktualny_temat = st.session_state.get("aktualny_temat")
 ma_sprawdzian_w_temacie = False
 if aktualny_temat and isinstance(profil_aktualny.get("postep_tematow"), dict):
@@ -190,7 +205,6 @@ if aktualny_temat and isinstance(profil_aktualny.get("postep_tematow"), dict):
 
 w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) or ma_sprawdzian_w_temacie
 
-# Automatyczne czyszczenie flagi sprawdzianu przy braku aktywnej lekcji
 if not lekcja_aktywna and w_trakcie_testu:
     ustaw_stan_testu(False)
     if aktualny_temat and "postep_tematow" in st.session_state:
@@ -200,26 +214,8 @@ if not lekcja_aktywna and w_trakcie_testu:
     st.rerun()
 
 # =====================================================================
-# 4. SYSTEM ANTY-CHEAT
+# 4. SYSTEM ANTY-CHEAT (BEZPIECZNA DETEKCJA)
 # =====================================================================
-st.markdown("""
-<style>
-    div[class*="st-key-btn_ac_rerun_hidden"],
-    .st-key-btn_ac_rerun_hidden {
-        display: none !important;
-        height: 0px !important;
-        margin: 0px !important;
-        padding: 0px !important;
-        overflow: hidden !important;
-        position: absolute !important;
-        pointer-events: none !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
-    st.rerun()
-
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
@@ -253,6 +249,7 @@ if lekcja_aktywna and w_trakcie_testu:
     user_doc_id = st.session_state.zalogowany_id
     user_api_key = st.session_state.get("user_api_key", "")
     
+    # POPRAWKA ANTY-CHEATA: Usunięto zdarzenie blur wywołujące fałszywe alarty
     components.html(f"""
     <script>
         let oszustwoWyslane = false;
@@ -291,10 +288,6 @@ if lekcja_aktywna and w_trakcie_testu:
             if (document.visibilityState === 'hidden') {{
                 zglosOszustwo();
             }}
-        }});
-
-        window.addEventListener("blur", function() {{
-            zglosOszustwo();
         }});
     </script>
     """, height=0, width=0)
@@ -453,11 +446,11 @@ with st.sidebar:
                             
                             zadanie_tresc = odp.split("[ZADANIE]")[1].strip()
                             st.session_state.messages = [{"role": "assistant", "content": zadanie_tresc}]
-                            zapisz_profil_w_chmurze()
                         else:
                             st.session_state.teoria_lekcji = odp
                             st.session_state.messages = [{"role": "assistant", "content": odp}]
-                            zapisz_profil_w_chmurze()
+                
+                zapisz_profil_w_chmurze()
                 st.rerun()
 
 # =====================================================================
@@ -529,104 +522,87 @@ else:
             with st.expander("📘 MATERIAŁY (Tylko podgląd)", expanded=True):
                 st.markdown(st.session_state.teoria_lekcji)
     else:
-        # FRAGMENT: Zapobiega pełnemu przeładowywaniu całego skryptu przy wysyłaniu wiadomości
-        @st.fragment
-        def renderuj_panel_lekcyjny():
-            st.subheader("Postęp w temacie:")
-            licznik = st.session_state.get("licznik_zadan", 0)
-            st.progress(min(licznik / 8, 1.0))
-            st.caption(f"Wykonano zadań: {licznik} / 8")
+        st.subheader("Postęp w temacie:")
+        licznik = st.session_state.get("licznik_zadan", 0)
+        st.progress(min(licznik / 8, 1.0))
+        st.caption(f"Wykonano zadań: {licznik} / 8")
+        
+        czy_sprawdzian = w_trakcie_testu or any("sprawdzający" in m["content"] for m in st.session_state.get("messages", []))
+        
+        if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
+            with st.expander("📘 MATERIAŁY", expanded=True):
+                st.markdown(st.session_state.teoria_lekcji)
+                
+        # Wyświetlanie historii konwersacji
+        for msg in st.session_state.get("messages", []):
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                
+        if prompt := st.chat_input("Napisz odpowiedź..."):
+            stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
+            status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
             
-            czy_sprawdzian = w_trakcie_testu or any("sprawdzający" in m["content"] for m in st.session_state.get("messages", []))
+            if status in ["Nie rozpoczęte", None]:
+                st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
+                zapisz_profil_w_chmurze() 
             
-            if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
-                with st.expander("📘 MATERIAŁY", expanded=True):
-                    st.markdown(st.session_state.teoria_lekcji)
-                    
-            if st.session_state.messages:
-                ostatnia = st.session_state.messages[-1]
-                with st.chat_message(ostatnia["role"]):
-                    st.markdown(ostatnia["content"])
-                    
-            if prompt := st.chat_input("Napisz odpowiedź..."):
-                stan_tematu = st.session_state.postep_tematow.get(st.session_state.aktualny_temat, {})
-                status = stan_tematu.get("status") if isinstance(stan_tematu, dict) else stan_tematu
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            
+            with st.spinner("Myślę..."):
+                obecny_licznik = st.session_state.get("licznik_zadan", 0)
+                odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
                 
-                if status in ["Nie rozpoczęte", None]:
-                    st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
-                    zapisz_profil_w_chmurze() 
-                
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                
-                with st.spinner("Myślę..."):
-                    obecny_licznik = st.session_state.get("licznik_zadan", 0)
-                    odp = zapytaj_ai(st.session_state.messages, st.session_state.aktualny_temat, obecny_licznik)
+                if odp.startswith("❌"):
+                    st.error(f"AI zwróciło błąd: {odp}")
+                else:
+                    temat_aktyw = st.session_state.aktualny_temat
                     
-                    if odp.startswith("❌"):
-                        st.error(f"AI zwróciło błąd: {odp}")
-                    else:
-                        temat_aktyw = st.session_state.aktualny_temat
-                        wymuszaj_pelny_rerun = False
+                    # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
+                    if "[SPRAWDZIAN]" in odp:
+                        ustaw_stan_testu(True)
+                        if "postep_tematow" not in st.session_state:
+                            st.session_state.postep_tematow = {}
+                        if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
+                            st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
+                            
+                        st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
+                        odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
-                        # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
-                        if "[SPRAWDZIAN]" in odp:
-                            ustaw_stan_testu(True)
+                    # WYKRYCIE ZAKOŃCZENIA SPRAWDZIANU
+                    if "[KONIEC SPRAWDZIANU]" in odp:
+                        ustaw_stan_testu(False)
+                        if temat_aktyw in st.session_state.postep_tematow and isinstance(st.session_state.postep_tematow[temat_aktyw], dict):
+                            st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
                             
-                            if "postep_tematow" not in st.session_state:
-                                st.session_state.postep_tematow = {}
-                            if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
-                                st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
-                                
-                            st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
-                            zapisz_profil_w_chmurze()
-                            odp = odp.replace("[SPRAWDZIAN]", "").strip()
-                            wymuszaj_pelny_rerun = True
-                            
-                        # WYKRYCIE ZAKOŃCZENIA SPRAWDZIANU
-                        if "[KONIEC SPRAWDZIANU]" in odp:
-                            ustaw_stan_testu(False)
-                            
-                            if temat_aktyw in st.session_state.postep_tematow and isinstance(st.session_state.postep_tematow[temat_aktyw], dict):
-                                st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
-                                
-                            zapisz_profil_w_chmurze()
-                            odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
-                            wymuszaj_pelny_rerun = True
+                        odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
-                        if "[ZALICZONE]" in odp:
-                            st.session_state.licznik_zadan = obecny_licznik + 1
-                            
-                            if st.session_state.licznik_zadan >= 8:
-                                st.session_state.postep_tematow[temat_aktyw] = {
-                                    "status": "ZALICZONY",
-                                    "data": datetime.now().strftime("%Y-%m-%d"),
-                                    "licznik": st.session_state.licznik_zadan,
-                                    "ma_sprawdzian": False
-                                }
-                                st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
-                                wymuszaj_pelny_rerun = True
+                    if "[ZALICZONE]" in odp:
+                        st.session_state.licznik_zadan = obecny_licznik + 1
                         
-                        if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
-                            st.balloons()
+                        if st.session_state.licznik_zadan >= 8:
                             st.session_state.postep_tematow[temat_aktyw] = {
                                 "status": "ZALICZONY",
                                 "data": datetime.now().strftime("%Y-%m-%d"),
-                                "licznik": st.session_state.get("licznik_zadan", 8),
+                                "licznik": st.session_state.licznik_zadan,
                                 "ma_sprawdzian": False
                             }
-                            wymuszaj_pelny_rerun = True
-                        
-                        czysta_odp = odp.replace("[ZALICZONE]", "").strip()
-                        st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
-                        
-                        if not isinstance(st.session_state.get("historia_czatow"), dict):
-                            st.session_state.historia_czatow = {}
-                        st.session_state.historia_czatow[temat_aktyw] = st.session_state.messages
-                        
-                        zapisz_profil_w_chmurze()
-                        
-                        # Pełne przeładowanie wymagane jest tylko przy zmianie blokad interfejsu (test/zaliczenie)
-                        if wymuszaj_pelny_rerun:
-                            st.rerun()
-
-        renderuj_panel_lekcyjny()
+                            st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
+                    
+                    if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
+                        st.balloons()
+                        st.session_state.postep_tematow[temat_aktyw] = {
+                            "status": "ZALICZONY",
+                            "data": datetime.now().strftime("%Y-%m-%d"),
+                            "licznik": st.session_state.get("licznik_zadan", 8),
+                            "ma_sprawdzian": False
+                        }
+                    
+                    czysta_odp = odp.replace("[ZALICZONE]", "").strip()
+                    st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
+                    
+                    if not isinstance(st.session_state.get("historia_czatow"), dict):
+                        st.session_state.historia_czatow = {}
+                    st.session_state.historia_czatow[temat_aktyw] = st.session_state.messages
+                    
+                    zapisz_profil_w_chmurze()
+                    st.rerun()
