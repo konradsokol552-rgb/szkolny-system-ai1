@@ -89,7 +89,7 @@ def get_db():
 
 db = get_db()
 
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def wczytaj_profil_z_chmury(identyfikator: str):
     try:
         doc = db.collection(COL_UCZNIOWIE).document(identyfikator).get()
@@ -181,14 +181,23 @@ if st.session_state.get("role") != "uczen":
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
 profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
 
-if not lekcja_aktywna and profil_aktualny.get("w_trakcie_testu"):
+# Weryfikacja czy aktualnie wybrany temat ma aktywny sprawdzian
+aktualny_temat = st.session_state.get("aktualny_temat")
+ma_sprawdzian_w_temacie = False
+if aktualny_temat and isinstance(profil_aktualny.get("postep_tematow"), dict):
+    dane_t = profil_aktualny["postep_tematow"].get(aktualny_temat, {})
+    if isinstance(dane_t, dict) and dane_t.get("ma_sprawdzian"):
+        ma_sprawdzian_w_temacie = True
+
+w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False) or ma_sprawdzian_w_temacie
+
+if not lekcja_aktywna and w_trakcie_testu:
     ustaw_stan_testu(False)
     st.rerun()
 
 # =====================================================================
 # 4. SYSTEM ANTY-CHEAT
 # =====================================================================
-# CSS do ukrycia wyzwalacza ponownego przeładowania
 st.markdown("""
 <style>
     div[class*="st-key-btn_ac_rerun_hidden"],
@@ -233,8 +242,7 @@ if profil_aktualny.get("blokada_do"):
         st.info("⏳ czas blokady: 45min.")
         st.stop()
 
-# Wstrzykiwanie skryptu śledzącego JS podczas testu
-w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False)
+# Wstrzykiwanie skryptu JS śledzącego opuszczenie karty podczas testu
 if lekcja_aktywna and w_trakcie_testu:
     try:
         project_id = st.secrets["connections"]["firestore"]["project_id"]
@@ -242,6 +250,7 @@ if lekcja_aktywna and w_trakcie_testu:
         project_id = "twoj-projekt-firestore"
 
     user_doc_id = st.session_state.zalogowany_id
+    user_api_key = st.session_state.get("user_api_key", "")
     
     components.html(f"""
     <script>
@@ -280,7 +289,7 @@ if lekcja_aktywna and w_trakcie_testu:
             if (oszustwoWyslane) return;
             oszustwoWyslane = true;
 
-            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa";
+            const url = "https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{COL_UCZNIOWIE}/{user_doc_id}?updateMask.fieldPaths=sygnal_oszustwa&key={user_api_key}";
             const payload = JSON.stringify({{
                 "fields": {{ "sygnal_oszustwa": {{ "booleanValue": true }} }}
             }});
@@ -290,19 +299,19 @@ if lekcja_aktywna and w_trakcie_testu:
                 headers: {{ "Content-Type": "application/json" }},
                 body: payload,
                 keepalive: true
-            }});
+            }}).then(() => {{
+                wyzwolRerunStreamlit();
+            }}).catch(err => console.error("Błąd zgłaszania oszustwa:", err));
         }}
 
         targetDoc.addEventListener("visibilitychange", function() {{
             if (targetDoc.visibilityState === 'hidden') {{
                 zglosOszustwo();
-            }} else if (targetDoc.visibilityState === 'visible' && oszustwoWyslane) {{
-                wyzwolRerunStreamlit();
             }}
         }});
 
-        targetWin.addEventListener("focus", function() {{
-            if (oszustwoWyslane) wyzwolRerunStreamlit();
+        targetWin.addEventListener("blur", function() {{
+            zglosOszustwo();
         }});
 
         targetWin.addEventListener("beforeunload", function(e) {{
@@ -314,9 +323,6 @@ if lekcja_aktywna and w_trakcie_testu:
 # =====================================================================
 # 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
 # =====================================================================
-import time
-import random
-
 def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) -> str:
     api_key = st.session_state.get("user_api_key")
     if not api_key:
@@ -332,11 +338,9 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         for m in historia_rozmowy[-10:]
     ]
     
-    # ZABEZPIECZENIE RÓL: Gemini wymaga, aby pierwsza wiadomość w historii należała do 'user'
     if contents and contents[0]["role"] == "model":
         contents.insert(0, {"role": "user", "parts": [{"text": "Rozpoczynamy lekcję."}]})
 
-    # UNIKALNE ZIARNO: Gwarantuje unikalność pytań przy każdym wywołaniu
     ziarno = f"{time.time()}_{random.randint(1000, 9999)}"
 
     if licznik_zadan == 0 and len(historia_rozmowy) <= 1:
@@ -372,6 +376,7 @@ def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) 
         return f"❌ Błąd API ({response.status_code}): {response.text}"
     except Exception as e:
         return f"❌ Błąd połączenia: {str(e)}"
+
 # =====================================================================
 # 6. PASEK BOCZNY (MENU I KONTROLA SESJI)
 # =====================================================================
@@ -448,14 +453,16 @@ with st.sidebar:
                 stan_tematu = profil_aktualny.get("postep_tematow", {}).get(wybor_tematu, {})
                 st.session_state.licznik_zadan = stan_tematu.get("licznik", 0) if isinstance(stan_tematu, dict) else 0
                 
+                # Jeśli ten temat miał zapisany aktywny sprawdzian – wymuś tryb testu
+                if isinstance(stan_tematu, dict) and stan_tematu.get("ma_sprawdzian"):
+                    ustaw_stan_testu(True)
+
                 historia = profil_aktualny.get("historia_czatow", {})
                 st.session_state.messages = historia.get(wybor_tematu, []) if isinstance(historia, dict) else []
                 
                 if not st.session_state.messages:
                     with st.spinner("Inicjalizacja lekcji z AI..."):
                         instrukcja = "Rozpoczynamy lekcję. Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                        
-                        # Zapisujemy intencję użytkownika, żeby utrzymać prawidłowy priorytet ról w API
                         st.session_state.messages = [{"role": "user", "content": instrukcja}]
                         
                         odp = zapytaj_ai(st.session_state.messages, wybor_tematu, 0)
@@ -466,7 +473,6 @@ with st.sidebar:
                                 st.session_state.teorie_lekcji = {}
                             st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
                             
-                            # Nadpisujemy historię czatu czystym zadaniem od AI
                             zadanie_tresc = odp.split("[ZADANIE]")[1].strip()
                             st.session_state.messages = [{"role": "assistant", "content": zadanie_tresc}]
                             zapisz_profil_w_chmurze()
@@ -550,7 +556,7 @@ else:
         st.progress(min(licznik / 8, 1.0))
         st.caption(f"Wykonano zadań: {licznik} / 8")
         
-        czy_sprawdzian = any("sprawdzający" in m["content"] for m in st.session_state.messages)
+        czy_sprawdzian = w_trakcie_testu or any("sprawdzający" in m["content"] for m in st.session_state.get("messages", []))
         
         if st.session_state.get("teoria_lekcji") and not czy_sprawdzian:
             with st.expander("📘 MATERIAŁY", expanded=True):
@@ -578,31 +584,50 @@ else:
                 if odp.startswith("❌"):
                     st.error(f"AI zwróciło błąd: {odp}")
                 else:
+                    temat_aktyw = st.session_state.aktualny_temat
+                    
+                    # WYKRYCIE ROZPOCZĘCIA SPRAWDZIANU
                     if "[SPRAWDZIAN]" in odp:
                         ustaw_stan_testu(True)
+                        
+                        if "postep_tematow" not in st.session_state:
+                            st.session_state.postep_tematow = {}
+                        if not isinstance(st.session_state.postep_tematow.get(temat_aktyw), dict):
+                            st.session_state.postep_tematow[temat_aktyw] = {"status": "W trakcie"}
+                            
+                        st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = True
+                        zapisz_profil_w_chmurze()
                         odp = odp.replace("[SPRAWDZIAN]", "").strip()
                         
+                    # WYKRYCIE ZAKOŃCZENIA SPRAWDZIANU
                     if "[KONIEC SPRAWDZIANU]" in odp:
                         ustaw_stan_testu(False)
+                        
+                        if temat_aktyw in st.session_state.postep_tematow and isinstance(st.session_state.postep_tematow[temat_aktyw], dict):
+                            st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
+                            
+                        zapisz_profil_w_chmurze()
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
                         
                         if st.session_state.licznik_zadan >= 8:
-                            st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                            st.session_state.postep_tematow[temat_aktyw] = {
                                 "status": "ZALICZONY",
                                 "data": datetime.now().strftime("%Y-%m-%d"),
-                                "licznik": st.session_state.licznik_zadan
+                                "licznik": st.session_state.licznik_zadan,
+                                "ma_sprawdzian": False
                             }
                             st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
                     
                     if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
-                        st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                        st.session_state.postep_tematow[temat_aktyw] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": st.session_state.get("licznik_zadan", 8)
+                            "licznik": st.session_state.get("licznik_zadan", 8),
+                            "ma_sprawdzian": False
                         }
                     
                     czysta_odp = odp.replace("[ZALICZONE]", "").strip()
@@ -610,7 +635,7 @@ else:
                     
                     if not isinstance(st.session_state.get("historia_czatow"), dict):
                         st.session_state.historia_czatow = {}
-                    st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
+                    st.session_state.historia_czatow[temat_aktyw] = st.session_state.messages
                     
                     zapisz_profil_w_chmurze()
                     st.rerun()
