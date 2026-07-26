@@ -108,9 +108,13 @@ def wczytaj_profil_z_chmury(identyfikator: str):
 def czysc_cache_profilu():
     wczytaj_profil_z_chmury.clear()
 
+def get_szkolne_dane_ref():
+    return db.collection("szkola").document(NAZWA_SZKOLY)
+
+
 def sprawdz_aktywnosc_lekcji() -> bool:
     try:
-        status_lekcji = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
+        status_lekcji = get_szkolne_dane_ref().collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
         if status_lekcji.exists:
             godzina_str = status_lekcji.to_dict().get("godzina_blokady")
             if godzina_str:
@@ -123,7 +127,7 @@ def sprawdz_aktywnosc_lekcji() -> bool:
 @st.cache_data(ttl=300)
 def pobierz_strukture() -> dict:
     try:
-        docs = db.collection(COL_PRZEDMIOTY).stream()
+        docs = get_szkolne_dane_ref().collection(COL_PRZEDMIOTY).stream()
         struktura = {}
         for doc in docs:
             dane = doc.to_dict().get("lista_tematow", [])

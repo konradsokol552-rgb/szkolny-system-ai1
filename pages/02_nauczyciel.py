@@ -74,7 +74,7 @@ with st.sidebar:
 st.title("Panel Nauczyciela")
 
 # Zarządzanie czasem
-status_lekcji_ref = db.collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL)
+status_lekcji_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL)
 status_lekcji = status_lekcji_ref.get()
 
 if status_lekcji.exists:
