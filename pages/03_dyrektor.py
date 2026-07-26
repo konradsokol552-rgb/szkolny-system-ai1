@@ -24,7 +24,7 @@ konta_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection("konta")
 st.title("🏛️ Panel Zarządzania Dyrektora")
 st.write(f"Zalogowano jako: **{st.session_state.get('zalogowany_id')}**")
 
-if st.button("🚪 Wyloguj się"):
+if st.button("Wyloguj się"):
     st.session_state.clear()
     st.switch_page("app.py")
 
