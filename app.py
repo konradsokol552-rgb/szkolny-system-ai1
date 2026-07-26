@@ -5,6 +5,7 @@ from google.cloud import firestore
 # --- 1. STAŁE I BAZA DANYCH ---
 NAZWA_SZKOLY = "szkola_podstawowa_1"  # Nazwa Twojego dokumentu szkoły w Firestore
 HASLO_SYSTEMOWE = "TwojeTajneHaslo123"
+COL_KLASY = "klasy"
 
 @st.cache_resource
 def get_db():
@@ -20,6 +21,10 @@ db = get_db()
 # Referencja do podkolekcji 'konta' w wybranej szkole
 def pobierz_kolekcje_kont():
     return db.collection("szkola").document(NAZWA_SZKOLY).collection("konta")
+
+
+def pobierz_kolekcje_klas():
+    return db.collection("szkola").document(NAZWA_SZKOLY).collection(COL_KLASY)
 
 # --- 2. FUNKCJE POMOCNICZE WIZUALNE I LOGICZNE ---
 def ustaw_czysty_interfejs(ukryj_sidebar=False):
@@ -52,17 +57,22 @@ def zaloguj_uzytkownika(id_input):
         "zalogowany_id": id_input,
         "user_api_key": dane.get("user_api_key", ""),
         "role": dane.get("rola", "uczen"),
+        "klasa": dane.get("klasa", ""),
         "postep_tematow": dane.get("postep_tematow", {}),
         "historia_czatow": dane.get("historia_czatow", {})
     })
     return True
 
-def stworz_konto(id_input, typ, klucz_api):
+def stworz_konto(id_input, typ, klucz_api, klasa):
+    if klasa.strip():
+        pobierz_kolekcje_klas().document(klasa.strip()).set({"nazwa": klasa.strip()}, merge=True)
+
     nowy_profil = {
         "user_api_key": klucz_api, 
         "postep_tematow": {}, 
         "historia_czatow": {},
-        "rola": typ
+        "rola": typ,
+        "klasa": klasa.strip()
     }
     pobierz_kolekcje_kont().document(id_input).set(nowy_profil)
 
@@ -93,6 +103,7 @@ if __name__ == "__main__":
         haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
         typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel", "dyrektor"])
         nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
+        klasa_konta = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
         
         if st.button("Zarejestruj konto"):
             if haslo_tworzenia != HASLO_SYSTEMOWE:
@@ -100,5 +111,5 @@ if __name__ == "__main__":
             elif not id_input or not nowy_klucz_api:
                 st.error("Wypełnij nazwę konta i klucz API!")
             else:
-                stworz_konto(id_input, typ_konta, nowy_klucz_api)
+                stworz_konto(id_input, typ_konta, nowy_klucz_api, klasa_konta)
                 st.success(f"Konto {id_input} ({typ_konta}) utworzone!")

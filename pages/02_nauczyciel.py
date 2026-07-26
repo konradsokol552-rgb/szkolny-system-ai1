@@ -28,7 +28,15 @@ def pobierz_konta_ref():
 
 def pobierz_uczniow():
     try:
-        return list(pobierz_konta_ref().where("rola", "==", "uczen").stream())
+        klasa_nauczyciela = st.session_state.get("klasa", "")
+        if not klasa_nauczyciela:
+            return []
+        return list(
+            pobierz_konta_ref()
+            .where("rola", "==", "uczen")
+            .where("klasa", "==", klasa_nauczyciela)
+            .stream()
+        )
     except Exception as e:
         st.error("Błąd połączenia z bazą uczniów.")
         return []
@@ -69,7 +77,7 @@ def render_sidebar():
         st.rerun()
     
     st.markdown("---")
-    st.subheader("Lista uczniów")
+    st.subheader(f"Lista uczniów klasy: {st.session_state.get('klasa', '-')}")
     
     uczniowie = pobierz_uczniow()
     for u in uczniowie:

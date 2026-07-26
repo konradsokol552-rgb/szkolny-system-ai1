@@ -20,6 +20,7 @@ def get_db():
 
 db = get_db()
 konta_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection("konta")
+klasy_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection("klasy")
 
 st.title("🏛️ Panel Zarządzania Dyrektora")
 st.write(f"Zalogowano jako: **{st.session_state.get('zalogowany_id')}**")
@@ -69,6 +70,7 @@ with zakladka1:
         nowe_id = st.text_input("Nazwa / Login użytkownika (np. j.kowalski)").strip()
         rola = st.selectbox("Rola w systemie", ["uczen", "nauczyciel", "dyrektor"])
         klucz_api = st.text_input("Klucz API Gemini dla tego konta", type="password")
+        klasa = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
         
         submit = st.form_submit_button("Utwórz konto")
         if submit:
@@ -79,13 +81,16 @@ with zakladka1:
                 if doc_check.exists:
                     st.error(f"Konto o nazwie '{nowe_id}' już istnieje!")
                 else:
+                    if klasa:
+                        klasy_ref.document(klasa).set({"nazwa": klasa}, merge=True)
                     konta_ref.document(nowe_id).set({
                         "user_api_key": klucz_api,
                         "rola": rola,
+                        "klasa": klasa,
                         "postep_tematow": {},
                         "historia_czatow": {}
                     })
-                    st.success(f"Pomyślnie utworzono konto: {nowe_id} [{rola}]")
+                    st.success(f"Pomyślnie utworzono konto: {nowe_id} [{rola}] klasy {klasa or '-'}")
 
 # --- ZAKŁADKA 2: PODGLĄD I EDYCJA KONT ---
 with zakladka2:
@@ -100,6 +105,7 @@ with zakladka2:
         lista_kont.append({
             "ID (Login)": doc.id,
             "Rola": dane.get("rola", "brak"),
+            "Klasa": dane.get("klasa", "brak"),
             "Klucz API": "***" + dane.get("user_api_key", "")[-4:] if dane.get("user_api_key") else "Brak"
         })
     
