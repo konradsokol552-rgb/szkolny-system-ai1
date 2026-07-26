@@ -33,6 +33,17 @@ def pobierz_uczniow():
         st.error("Błąd połączenia z bazą uczniów.")
         return []
 
+def odblokuj_blokade_ucznia(uczen_id):
+    try:
+        pobierz_konta_ref().document(uczen_id).update({
+            "blokada_do": firestore.DELETE_FIELD,
+            "sygnal_oszustwa": False
+        })
+        return True
+    except Exception as e:
+        st.error(f"Nie udało się odblokować ucznia: {e}")
+        return False
+
 def zresetuj_dane_ucznia(uczen_id):
     doc_ref = pobierz_konta_ref().document(uczen_id)
     doc_ref.update({
@@ -102,6 +113,13 @@ if "wybrany_uczen_id" in st.session_state:
         
         if dane.get("potrzebuje_pomocy"):
             st.error(f"🚨 UCZEŃ PROSI O POMOC: {dane.get('aktualny_temat_problemu')}")
+
+        if dane.get("blokada_do"):
+            st.warning("🔒 Uczeń ma aktywną blokadę anty-cheat.")
+            if st.button(f"🔓 Odblokuj anty-cheat dla {uczen_id}"):
+                if odblokuj_blokade_ucznia(uczen_id):
+                    st.success("Blokada została usunięta.")
+                    st.rerun()
         
         # Wyświetlanie postępów
         for temat, stan in dane.get('postep_tematow', {}).items():
