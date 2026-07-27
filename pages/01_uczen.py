@@ -462,7 +462,7 @@ with st.sidebar:
 # 7. GŁÓWNY PANEL APLIKACJI
 # =====================================================================
 if "aktualny_temat" not in st.session_state:
-    st.title("Cześć Uczniu, który temat robimy?")
+    st.title(f"Cześć **{st.session_state.get('zalogowany_id')}**, który temat robimy?")
     st.subheader("Twój postęp (ostatnie 4 tygodnie)")
     
     dzis = datetime.now()
