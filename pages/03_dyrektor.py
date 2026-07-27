@@ -70,6 +70,7 @@ with zakladka1:
         nowe_id = st.text_input("Nazwa / Login użytkownika (np. j.kowalski)").strip()
         rola = st.selectbox("Rola w systemie", ["uczen", "nauczyciel"])
         klucz_api = st.text_input("Klucz API Gemini dla tego konta", type="password")
+        haslo_konta = st.text_input("Hasło konta", type="password")
         klasa = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
         
         submit = st.form_submit_button("Utwórz konto")
@@ -85,6 +86,7 @@ with zakladka1:
                         klasy_ref.document(klasa).set({"nazwa": klasa}, merge=True)
                     konta_ref.document(nowe_id).set({
                         "user_api_key": klucz_api,
+                        "haslo": haslo_konta,
                         "rola": rola,
                         "klasa": klasa,
                         "postep_tematow": {},
