@@ -4,7 +4,7 @@ from google.cloud import firestore
 
 # --- 1. STAŁE I BAZA DANYCH ---
 NAZWA_SZKOLY = "szkola_podstawowa_1"  # Nazwa Twojego dokumentu szkoły w Firestore
-HASLO_SYSTEMOWE = "TwojeTajneHaslo123"
+HASLO_SYSTEMOWE = "kM8#pQ!2vZ$xL@9tW"
 COL_KLASY = "klasy"
 
 @st.cache_resource
