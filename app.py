@@ -87,8 +87,8 @@ if __name__ == "__main__":
     ustaw_czysty_interfejs(ukryj_sidebar=True)
 
     st.title("🏫 Logowanie do Systemu")
-    id_input = st.text_input("Nazwa konta").strip()
-    haslo_input = st.text_input("Hasło konta", type="password")
+    id_input = st.text_input("Nazwa konta", key="login_nazwa_konta").strip()
+    haslo_input = st.text_input("Hasło konta", type="password", key="login_haslo_konta")
 
     # LOGOWANIE
     if st.button("Zaloguj"):
@@ -105,11 +105,11 @@ if __name__ == "__main__":
 
     # TWORZENIE KONTA (Awaryjne / Początkowe)
     with st.expander("Tworzenie konta"):
-        haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
-        typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel", "dyrektor"])
-        nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
-        haslo_konta = st.text_input("Hasło konta", type="password")
-        klasa_konta = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
+        haslo_tworzenia = st.text_input("Hasło systemowe", type="password", key="create_haslo_systemowe")
+        typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel", "dyrektor"], key="create_typ_konta")
+        nowy_klucz_api = st.text_input("Klucz API Gemini", type="password", key="create_klucz_api")
+        haslo_konta = st.text_input("Hasło konta", type="password", key="create_haslo_konta")
+        klasa_konta = st.text_input("Klasa / oddział", placeholder="np. 1A", key="create_klasa_konta").strip()
         
         if st.button("Zarejestruj konto"):
             if haslo_tworzenia != HASLO_SYSTEMOWE:
