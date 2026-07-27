@@ -68,7 +68,7 @@ with zakladka1:
     st.subheader("Tworzenie nowego użytkownika")
     with st.form("form_dodaj_konto"):
         nowe_id = st.text_input("Nazwa / Login użytkownika (np. j.kowalski)").strip()
-        rola = st.selectbox("Rola w systemie", ["uczen", "nauczyciel", "dyrektor"])
+        rola = st.selectbox("Rola w systemie", ["uczen", "nauczyciel"])
         klucz_api = st.text_input("Klucz API Gemini dla tego konta", type="password")
         klasa = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
         
