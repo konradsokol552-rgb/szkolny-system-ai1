@@ -135,7 +135,7 @@ with zakladka3:
 
     with st.form("form_dodaj_przedmiot"):
         nowy_przedmiot = st.text_input("Nazwa nowego przedmiotu").strip()
-        nowe_tematy = st.text_area("Tematy nowego przedmiotu (jeden per linię)", placeholder="np. Algebra\nGeometria")
+        nowe_tematy = st.text_area("Tematy nowego przedmiotu (wpisuj jeden pod drugim)", placeholder="np. Algebra\nGeometria")
         if st.form_submit_button("➕ Dodaj przedmiot"):
             if not nowy_przedmiot:
                 st.error("Wpisz nazwę przedmiotu.")
@@ -149,7 +149,7 @@ with zakladka3:
         st.divider()
         wybrany_przedmiot = st.selectbox("Edytuj istniejący przedmiot", list(przedmioty.keys()), key="wybrany_przedmiot")
         tematy_text = "\n".join(przedmioty[wybrany_przedmiot])
-        tematy_input = st.text_area("Tematy dla wybranego przedmiotu", value=tematy_text, height=220, key="tematy_input")
+        tematy_input = st.text_area("edytowanie tematów(wpisuj jeden pod drugim)", value=tematy_text, height=220, key="tematy_input")
 
         col1, col2 = st.columns(2)
         with col1:
