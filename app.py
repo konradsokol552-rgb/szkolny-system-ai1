@@ -45,7 +45,7 @@ def ustaw_czysty_interfejs(ukryj_sidebar=False):
     style += "</style>"
     st.markdown(style, unsafe_allow_html=True)
 
-def zaloguj_uzytkownika(id_input):
+def zaloguj_uzytkownika(id_input, haslo_input):
     doc_ref = pobierz_kolekcje_kont().document(id_input)
     doc = doc_ref.get()
     
@@ -53,6 +53,9 @@ def zaloguj_uzytkownika(id_input):
         return False
     
     dane = doc.to_dict()
+    if dane.get("haslo") != haslo_input:
+        return False
+    
     st.session_state.update({
         "zalogowany_id": id_input,
         "user_api_key": dane.get("user_api_key", ""),
@@ -63,13 +66,14 @@ def zaloguj_uzytkownika(id_input):
     })
     return True
 
-def stworz_konto(id_input, typ, klucz_api, klasa):
+def stworz_konto(id_input, typ, klucz_api, klasa, haslo):
     if klasa.strip():
         pobierz_kolekcje_klas().document(klasa.strip()).set({"nazwa": klasa.strip()}, merge=True)
 
     nowy_profil = {
-        "user_api_key": klucz_api, 
-        "postep_tematow": {}, 
+        "user_api_key": klucz_api,
+        "haslo": haslo,
+        "postep_tematow": {},
         "historia_czatow": {},
         "rola": typ,
         "klasa": klasa.strip()
@@ -84,10 +88,11 @@ if __name__ == "__main__":
 
     st.title("🏫 Logowanie do Systemu")
     id_input = st.text_input("Nazwa konta").strip()
+    haslo_input = st.text_input("Hasło konta", type="password")
 
     # LOGOWANIE
     if st.button("Zaloguj"):
-        if id_input and zaloguj_uzytkownika(id_input):
+        if id_input and haslo_input and zaloguj_uzytkownika(id_input, haslo_input):
             rola = st.session_state.role
             if rola == "dyrektor":
                 st.switch_page("pages/03_dyrektor.py")
@@ -96,20 +101,21 @@ if __name__ == "__main__":
             else:
                 st.switch_page("pages/01_uczen.py")
         else:
-            st.error("Konto nie istnieje lub nazwa jest pusta.")
+            st.error("Konto nie istnieje, dane są nieprawidłowe lub brakuje hasła.")
 
     # TWORZENIE KONTA (Awaryjne / Początkowe)
     with st.expander("Tworzenie konta"):
         haslo_tworzenia = st.text_input("Hasło systemowe", type="password")
         typ_konta = st.selectbox("Typ konta", ["uczen", "nauczyciel", "dyrektor"])
         nowy_klucz_api = st.text_input("Klucz API Gemini", type="password")
+        haslo_konta = st.text_input("Hasło konta", type="password")
         klasa_konta = st.text_input("Klasa / oddział", placeholder="np. 1A").strip()
         
         if st.button("Zarejestruj konto"):
             if haslo_tworzenia != HASLO_SYSTEMOWE:
                 st.error("Błędne hasło systemowe!")
-            elif not id_input or not nowy_klucz_api:
-                st.error("Wypełnij nazwę konta i klucz API!")
+            elif not id_input or not nowy_klucz_api or not haslo_konta:
+                st.error("Wypełnij nazwę konta, klucz API i hasło!")
             else:
-                stworz_konto(id_input, typ_konta, nowy_klucz_api, klasa_konta)
+                stworz_konto(id_input, typ_konta, nowy_klucz_api, klasa_konta, haslo_konta)
                 st.success(f"Konto {id_input} ({typ_konta}) utworzone!")
