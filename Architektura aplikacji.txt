@@ -1,0 +1,14 @@
+szkolny-system-ai/
+├── .streamlit/
+│   └── secrets.toml          # Sekrety, klucze API, konfiguracja Firestore
+├── config.py                 # Stałe aplikacyjne i konfiguracja
+├── services/
+│   ├── db_service.py         # Połączenie i operacje na Firestore
+│   ├── auth_service.py       # Haszowanie haseł i weryfikacja uprawnień
+│   └── ai_service.py         # Logika komunikacji z modelami Gemini
+├── pages/
+│   ├── 01_uczen.py           # Widok ucznia
+│   ├── 02_nauczyciel.py      # Widok nauczyciela
+│   └── 03_dyrektor.py       # Widok dyrektora
+├── app.py                    # Strona główna / Logowanie
+└── requirements.txt
