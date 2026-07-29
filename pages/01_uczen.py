@@ -1,151 +1,42 @@
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-from google.cloud import firestore
-from google.oauth2 import service_account
 
-from gemini_backend import zapytaj_ai as backend_zapytaj_ai
-
-# =====================================================================
-# 1. STAŁE I KONFIGURACJA
-# =====================================================================
-STREFA_PL = ZoneInfo("Europe/Warsaw")
-NAZWA_SZKOLY = "szkola_podstawowa_1"
-COL_KONTA = "konta"
-COL_PRZEDMIOTY = "przedmioty"
-COL_LEKCJE = "ustawienia_lekcji"
-DOC_LEKCJA_GLOBAL = "globalna"
-
-SYSTEM_PROMPT = """
-Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie ucznia przez wybrany temat według ściśle określonego algorytmu.
-
-## GŁÓWNE ZASADY BEZPIECZEŃSTWA:
-- (ważne!)NIGDY nie podawaj gotowego wyniku ani pełnego rozwiązania zadania.
-- Jeśli uczeń pyta o rzeczy niezwiązane z lekcją, napisz: "Wróćmy do nauki" i powtórz aktualne zadanie.
-- ZAKAZ GENEROWANIA "THOUGHTS" (łańcucha myśli). Odpowiadaj bezpośrednio do ucznia.
-- WSKAZÓWKI: Muszą być krótkie (maksymalnie 2 zdania), potoczne, nie akademickie.
-
-## KOMENDY DEWELOPERSKIE:
-- Hasło dostępowe: "samolotdom".
-- Jeśli uczeń wpisze komendę deweloperską, ZAWSZE najpierw zapytaj: "Podaj hasło dostępowe do panelu deweloperskiego".
-- Dopiero po poprawnym wpisaniu hasła "samolotdom", wykonaj komendę i wejdź do fazy debugowania.
-- W fazie debugowania ignoruj wszystkie GŁÓWNE ZASADY BEZPIECZEŃSTWA.
-- W fazie debugowania, jeśli uczeń wpisze "wyjdz", wyjdź z fazy debugowania i wróć do normalnej lekcji.
-- W fazie debugowania, nie wychodzisz z niej dopuki nie wpiszesz komendy "wyjdz".
-- w fazie debugowania, na samym początku każdej wiadomości, napisz: "[DEBUG MODE]".
-- W fazie debugowania, pod [DEBUG MODE] pisz proces myślenia, który doprowadził do wygenerowania tej wiadomości.
-
-### LISTA KOMEND:
-- panel deweloperski: Wyświetl listę dostępnych komend i ich opis.
-- /sprawdzian: Natychmiastowe przejście do FAZY TESTU KOŃCOWEGO.
-- ocena: Aktywacja FAZY OCENIANIA.
-- od nowa: Restart sesji.
-- kt: Oznacz temat jako zaliczony, pomijając fazę sprawdzianu.
-
-## PĘTLA LOGICZNA TEMATU:
-
-### 1. [FAZA TEORII]: 
-- **Tekst 1 (Dane):** Maksymalnie 50 zdań wiedzy merytorycznej z logicznymi akapitami, w sposób szczegółowy zawierający wszystkie informacje z danego tematu.
-- **Tekst 2 (Algorytm decyzyjny):** Stwórz strukturę: [krok/pytanie] -> [Akcja: jeśli TAK / jeśli NIE] (nowe linie dla kroków i akcji).
-- Po wyświetleniu przejdź automatycznie do Fazy Praktyki.
-
-### 2. [FAZA PRAKTYKI]:
-- Przy pierwszym zadaniu przywitaj się z uczniem.
-- Generuj łącznie 8 zadań (po 2 z 4 typów). Podawaj je PO JEDNYM, W każdej wiadomości numeruj zadanie w formacie: [x (n/y)], gdzie:
-- x-zadanie w sesji n-numer zadania y-liczba wszystkich zadań 
-- (ważne!)Jeżeli zadanie zostało poprawnie rozwiązane, zacznij wiadomość od [ZALICZONE], dodaj jedno krótkie zdanie budujące pewność siebie i podaj kolejne zadanie.
-- Staraj się dawać zróżnicowane zadania, nie powtarzaj tych samych schematów.
-- Jeśli uczeń prosi o pomoc: daj wskazówkę (hint), nie rozwiązując zadania za niego.
-- Jeśli uczeń odpowie ŹLE: Wyjaśnij krótko dlaczego (używając algorytmu), napisz "Odłóżmy to zadanie na koniec", przesuń to zadanie na koniec kolejki i przejdź do kolejnego.
--jezeli uczeni robi ponownie źle zrobione zadania, zmień treść zdania, zachowując ten sam typ. Pociesz ucznia i naprowadzaj go, ale nigdy nie dawaj gotowych odpowiedzi.
--po zakoniczeniu fazy praktyki zapytaj sie czunia czy chce powtuzyć fazę pratyki.
--jezeli powie nie, przechodzisz do fazy testu końcowego.
-
-### 3. [FAZA TESTU KOŃCOWEGO]: 
-- (ważne!) W wiadomości z testem napisz na samym początku [SPRAWDZIAN].
-- Powiedz: "Czas na test sprawdzający. Teraz pracujesz samodzielnie, bez moich wskazówek." Wygeneruj 4 zadania (po jednym z każdego typu).
-- Masz zakaz podawania wskazówek i podpowiedzi. Uczeń musi samodzielnie rozwiązać test, ale możesz wyjaśniać nieścisłości w treści zadań, jeśli uczeń o to zapyta.
-- **PROCEDURA ODDANIA:** Gdy uczeń zgłosi chęć oddania testu, MASZ ZAKAZ sprawdzania wyników od razu. Wyświetl tylko: "Czy na pewno chcesz oddać sprawdzian? Napisz TAK lub NIE."
-- **REAKCJA NA WYBÓR:** -> "NIE": Napisz: "Dobrze, spróbuj jeszcze raz pomyśleć", i wyświetl test ponownie.
-  -> "TAK": Sprawdź test i na początku wiadomości ze sprawdzzeniem napisz [KONIEC SPRAWDZIANU].
-    * 100% punktów -> Wyświetl: "GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie."
-    * <100% punktów -> Wyświetl: "Test niezaliczony na 100%. Pomijamy ten temat na później" + wyjaśnij błędy. Oznacz temat jako "POMINIĘTY".
-"""
+from config import STREFA_PL
+from services.auth_service import sprawdz_dostep
+from services.ai_service import zapytaj_ai
+from services.db_service import (
+    pobierz_konto,
+    zapisz_konto,
+    pobierz_przedmioty,
+    pobierz_status_lekcji_globalnej,
+    wczytaj_profil_z_chmury,
+    zapisz_profil_do_chmury,
+)
 
 # =====================================================================
-# 2. BAZA DANYCH I CACHOWANE FUNKCJE POMOCNICZE
+# 1. STRAŻNIK DOSTĘPU I INICJALIZACJA
 # =====================================================================
-@st.cache_resource
-def get_db():
-    try:
-        key_dict = st.secrets["connections"]["firestore"]
-        creds = service_account.Credentials.from_service_account_info(key_dict)
-        return firestore.Client(credentials=creds, project=key_dict["project_id"])
-    except Exception as e:
-        st.error(f"❌ KRYTYCZNY BŁĄD AUTORYZACJI FIRESTORE: {str(e)}")
-        st.stop()
+sprawdz_dostep(wymagana_rola="uczen")
 
-db = get_db()
-
-def get_konta_ref():
-    return db.collection("szkola").document(NAZWA_SZKOLY).collection(COL_KONTA)
-
-
-def get_konto_ref(identyfikator: str):
-    return get_konta_ref().document(identyfikator)
-
-@st.cache_data(ttl=10)
-def wczytaj_profil_z_chmury(identyfikator: str):
-    try:
-        doc = get_konto_ref(identyfikator).get()
-        return doc.to_dict() if doc.exists else {}
-    except Exception as e:
-        st.error(f"Nie udało się wczytać profilu: {e}")
-        return {}
-
-def czysc_cache_profilu():
-    wczytaj_profil_z_chmury.clear()
-
-def get_szkolne_dane_ref():
-    return db.collection("szkola").document(NAZWA_SZKOLY)
-
+user_id = st.session_state.zalogowany_id
 
 def sprawdz_aktywnosc_lekcji() -> bool:
-    try:
-        status_lekcji = get_szkolne_dane_ref().collection(COL_LEKCJE).document(DOC_LEKCJA_GLOBAL).get()
-        if status_lekcji.exists:
-            godzina_str = status_lekcji.to_dict().get("godzina_blokady")
-            if godzina_str:
-                godzina_blokady = datetime.strptime(godzina_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
-                return datetime.now(STREFA_PL) < godzina_blokady
-    except Exception:
-        pass
+    dane = pobierz_status_lekcji_globalnej()
+    if dane and dane.get("godzina_blokady"):
+        try:
+            godzina_blokady = datetime.strptime(dane["godzina_blokady"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=STREFA_PL)
+            return datetime.now(STREFA_PL) < godzina_blokady
+        except Exception:
+            pass
     return False
 
-@st.cache_data(ttl=300)
-def pobierz_strukture() -> dict:
-    try:
-        docs = get_szkolne_dane_ref().collection(COL_PRZEDMIOTY).stream()
-        struktura = {}
-        for doc in docs:
-            dane = doc.to_dict().get("lista_tematow", [])
-            struktura[doc.id] = dane if isinstance(dane, list) else [str(dane)]
-        return struktura
-    except Exception as e:
-        st.error(f"Błąd wczytywania struktury: {e}")
-        return {}
-
 def ustaw_stan_testu(w_trakcie: bool):
-    if "zalogowany_id" in st.session_state:
-        get_konto_ref(st.session_state.zalogowany_id).set(
-            {"w_trakcie_testu": w_trakcie}, merge=True
-        )
-        czysc_cache_profilu()
+    zapisz_konto(user_id, {"w_trakcie_testu": w_trakcie}, merge=True)
+    wczytaj_profil_z_chmury.clear()
 
-def zapisz_profil_w_chmurze():
-    identyfikator = st.session_state.zalogowany_id
+def zapisz_profil_w_chmurze_local():
     postepy = st.session_state.get("postep_tematow", {})
     historia = st.session_state.get("historia_czatow", {})
     if not isinstance(historia, dict):
@@ -167,11 +58,7 @@ def zapisz_profil_w_chmurze():
         "historia_czatow": historia,
         "teorie_lekcji": st.session_state.get("teorie_lekcji", {})
     }
-    try:
-        get_konto_ref(identyfikator).set(dane_do_zapisu, merge=True)
-        czysc_cache_profilu()
-    except Exception as e:
-        st.error(f"Błąd zapisu danych: {e}")
+    zapisz_profil_do_chmury(user_id, dane_do_zapisu)
 
 def _parsuj_czas_blokady(raw_blokada) -> datetime:
     if isinstance(raw_blokada, datetime):
@@ -181,26 +68,16 @@ def _parsuj_czas_blokady(raw_blokada) -> datetime:
     except Exception:
         return datetime.now(STREFA_PL)
 
-# =====================================================================
-# 3. STRAŻNIK DOSTĘPU
-# =====================================================================
-if "zalogowany_id" not in st.session_state:
-    st.switch_page("app.py")
-if st.session_state.get("role") != "uczen":
-    st.error("Nie masz uprawnień uczniowskich.")
-    st.stop()
-
 lekcja_aktywna = sprawdz_aktywnosc_lekcji()
-profil_aktualny = wczytaj_profil_z_chmury(st.session_state.zalogowany_id)
+profil_aktualny = wczytaj_profil_z_chmury(user_id) or {}
 
 if not lekcja_aktywna and profil_aktualny.get("w_trakcie_testu"):
     ustaw_stan_testu(False)
     st.rerun()
 
 # =====================================================================
-# 4. SYSTEM ANTY-CHEAT
+# 2. SYSTEM ANTY-CHEAT
 # =====================================================================
-# CSS do ukrycia wyzwalacza ponownego przeładowania
 st.markdown("""
 <style>
     div[class*="st-key-btn_ac_rerun_hidden"],
@@ -217,31 +94,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 if st.button("RERUN_ANTYCHEAT_TRIGGER", key="btn_ac_rerun_hidden"):
-    try:
-        get_konto_ref(st.session_state.zalogowany_id).set({
-            "sygnal_oszustwa": True
-        }, merge=True)
-        czysc_cache_profilu()
-    except Exception as e:
-        st.error(f"Błąd zgłoszenia oszustwa: {e}")
+    zapisz_konto(user_id, {"sygnal_oszustwa": True}, merge=True)
+    wczytaj_profil_z_chmury.clear()
     st.rerun()
 
-# Reakcja na sygnał oszustwa
 if profil_aktualny.get("sygnal_oszustwa") is True:
     teraz_pl = datetime.now(STREFA_PL)
     czas_kary = teraz_pl + timedelta(minutes=45)
-    try:
-        get_konto_ref(st.session_state.zalogowany_id).set({
-            "sygnal_oszustwa": False,
-            "blokada_do": czas_kary
-        }, merge=True)
-        czysc_cache_profilu()
-        profil_aktualny["blokada_do"] = czas_kary
-        profil_aktualny["sygnal_oszustwa"] = False
-    except Exception as e:
-        st.error(f"Błąd przetwarzania kary: {e}")
+    zapisz_konto(user_id, {
+        "sygnal_oszustwa": False,
+        "blokada_do": czas_kary
+    }, merge=True)
+    wczytaj_profil_z_chmury.clear()
+    profil_aktualny["blokada_do"] = czas_kary
+    profil_aktualny["sygnal_oszustwa"] = False
 
-# Egzekwowanie blokady czasowej
 if profil_aktualny.get("blokada_do"):
     czas_blokady = _parsuj_czas_blokady(profil_aktualny["blokada_do"])
     teraz = datetime.now(STREFA_PL)
@@ -252,7 +119,7 @@ if profil_aktualny.get("blokada_do"):
         st.info("⏳ czas blokady: 45min.")
         st.stop()
 
-# Wstrzykiwanie skryptu śledzącego JS podczas testu
+# Wstrzykiwanie skryptu JS podczas testu
 w_trakcie_testu = profil_aktualny.get("w_trakcie_testu", False)
 if lekcja_aktywna and w_trakcie_testu:
     components.html("""
@@ -263,7 +130,6 @@ if lekcja_aktywna and w_trakcie_testu:
         const targetDoc = window.parent ? window.parent.document : document;
         const targetWin = window.parent ? window.parent : window;
 
-        // --- 1. ZABEZPIECZENIE PRZED WYGASANIEM EKRANU (WAKE LOCK) ---
         async function aktywujWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -274,23 +140,12 @@ if lekcja_aktywna and w_trakcie_testu:
                 console.warn("Nie udało się aktywować Wake Lock:", err);
             }
         }
-
-        // Odpalana od razu po wejściu w test
         aktywujWakeLock();
 
-        // --- 2. LOGIKA ODNALEZIENIA PRZYCISKU RERUN ---
         function znajdzPrzycisk() {
             const dokumenty = [document];
-            try {
-                if (window.parent && window.parent !== window) dokumenty.push(window.parent.document);
-            } catch (e) {
-                console.warn("Brak dostępu do window.parent.document", e);
-            }
-            try {
-                if (window.top && window.top !== window) dokumenty.push(window.top.document);
-            } catch (e) {
-                console.warn("Brak dostępu do window.top.document", e);
-            }
+            try { if (window.parent && window.parent !== window) dokumenty.push(window.parent.document); } catch (e) {}
+            try { if (window.top && window.top !== window) dokumenty.push(window.top.document); } catch (e) {}
 
             for (const doc of dokumenty) {
                 try {
@@ -304,9 +159,7 @@ if lekcja_aktywna and w_trakcie_testu:
                             return b;
                         }
                     }
-                } catch (e) {
-                    console.warn("Błąd wyszukiwania przycisku w dokumencie:", e);
-                }
+                } catch (e) {}
             }
             return null;
         }
@@ -326,12 +179,10 @@ if lekcja_aktywna and w_trakcie_testu:
             wyzwolRerunStreamlit();
         }
 
-        // --- 3. NASŁUCHIWANIE ZDARZEŃ (TYLKO REALE UKRYCIE KARTY) ---
         targetDoc.addEventListener("visibilitychange", function() {
             if (targetDoc.visibilityState === 'hidden') {
                 zglosOszustwo();
             } else if (targetDoc.visibilityState === 'visible') {
-                // Po powrocie do widocznej karty upewniamy się, że blokada ekranu nadal działa
                 if (!oszustwoWyslane) {
                     aktywujWakeLock();
                 } else {
@@ -347,16 +198,10 @@ if lekcja_aktywna and w_trakcie_testu:
     """, height=0)
 
 # =====================================================================
-# 5. KOMUNIKACJA Z MODELOWĄ WARSTWĄ AI
-# =====================================================================
-def zapytaj_ai(historia_rozmowy: list, temat_kontekst: str, licznik_zadan: int) -> str:
-    return backend_zapytaj_ai(historia_rozmowy, temat_kontekst, licznik_zadan, SYSTEM_PROMPT)
-
-# =====================================================================
-# 6. PASEK BOCZNY (MENU I KONTROLA SESJI)
+# 3. PASEK BOCZNY (MENU I KONTROLA SESJI)
 # =====================================================================
 if "struktura_dydaktyczna" not in st.session_state:
-    st.session_state.struktura_dydaktyczna = pobierz_strukture()
+    st.session_state.struktura_dydaktyczna = pobierz_przedmioty()
 
 with st.sidebar:
     if w_trakcie_testu:
@@ -436,8 +281,6 @@ with st.sidebar:
                 if not st.session_state.messages:
                     with st.spinner("Inicjalizacja lekcji z AI..."):
                         instrukcja = "Rozpoczynamy lekcję. Wyślij odpowiedź w formacie: [TEORIA]Treść teorii[TEORIA_KONIEC] [ZADANIE]Treść zadania"
-                        
-                        # Zapisujemy intencję użytkownika, żeby utrzymać prawidłowy priorytet ról w API
                         st.session_state.messages = [{"role": "user", "content": instrukcja}]
                         
                         odp = zapytaj_ai(st.session_state.messages, wybor_tematu, 0)
@@ -448,18 +291,17 @@ with st.sidebar:
                                 st.session_state.teorie_lekcji = {}
                             st.session_state.teorie_lekcji[wybor_tematu] = st.session_state.teoria_lekcji
                             
-                            # Nadpisujemy historię czatu czystym zadaniem od AI
                             zadanie_tresc = odp.split("[ZADANIE]")[1].strip()
                             st.session_state.messages = [{"role": "assistant", "content": zadanie_tresc}]
-                            zapisz_profil_w_chmurze()
+                            zapisz_profil_w_chmurze_local()
                         else:
                             st.session_state.teoria_lekcji = odp
                             st.session_state.messages = [{"role": "assistant", "content": odp}]
-                            zapisz_profil_w_chmurze()
+                            zapisz_profil_w_chmurze_local()
                 st.rerun()
 
 # =====================================================================
-# 7. GŁÓWNY PANEL APLIKACJI
+# 4. GŁÓWNY PANEL APLIKACJI
 # =====================================================================
 if "aktualny_temat" not in st.session_state:
     st.title(f"Cześć **{st.session_state.get('zalogowany_id')}**, który temat robimy?")
@@ -495,11 +337,11 @@ else:
 
     if stan_pomocy:
         if st.button("🟢 Odwołaj wezwanie pomocy", use_container_width=True):
-            get_konto_ref(st.session_state.zalogowany_id).update({
+            zapisz_konto(user_id, {
                 "potrzebuje_pomocy": False,
                 "aktualny_temat_problemu": ""
-            })
-            czysc_cache_profilu()
+            }, merge=True)
+            wczytaj_profil_z_chmury.clear()
             st.rerun()
     else:
         if st.button("🚨 WEZWIJ NAUCZYCIELA DO POMOCY", use_container_width=True):
@@ -512,12 +354,12 @@ else:
             if isinstance(postepy[temat], dict):
                 postepy[temat]["licznik_sos"] = postepy[temat].get("licznik_sos", 0) + 1
             
-            get_konto_ref(st.session_state.zalogowany_id).update({
+            zapisz_konto(user_id, {
                 "potrzebuje_pomocy": True,
                 "aktualny_temat_problemu": temat,
                 "postep_tematow": postepy
-            })
-            czysc_cache_profilu()
+            }, merge=True)
+            wczytaj_profil_z_chmury.clear()
             st.rerun()
 
     # --- WERYFIKACJA STANU LEKCJI I INTERFEJS CZATU ---
@@ -549,7 +391,7 @@ else:
             
             if status in ["Nie rozpoczęte", None]:
                 st.session_state.postep_tematow[st.session_state.aktualny_temat] = {"status": "W trakcie"}
-                zapisz_profil_w_chmurze() 
+                zapisz_profil_w_chmurze_local() 
             
             st.session_state.messages.append({"role": "user", "content": prompt})
             
@@ -602,5 +444,5 @@ else:
                         st.session_state.historia_czatow = {}
                     st.session_state.historia_czatow[st.session_state.aktualny_temat] = st.session_state.messages
                     
-                    zapisz_profil_w_chmurze()
+                    zapisz_profil_w_chmurze_local()
                     st.rerun()

@@ -1,59 +1,22 @@
 import streamlit as st
-from google.oauth2 import service_account
-from google.cloud import firestore
+
+from services.auth_service import sprawdz_dostep, stworz_konto
+from services.db_service import (
+    pobierz_konto,
+    pobierz_wszystkie_konta,
+    usun_konto,
+    pobierz_przedmioty,
+    zapisz_przedmiot,
+    usun_przedmiot,
+)
 
 st.set_page_config(page_title="Panel Dyrektora", layout="wide")
 
 # Ochrona dostępu - tylko dla zalogowanego dyrektora
-if st.session_state.get("role") != "dyrektor":
-    st.error("Brak uprawnień do przeglądania tej strony!")
-    st.stop()
-
-# --- BAZA DANYCH ---
-NAZWA_SZKOLY = "szkola_podstawowa_1"
-
-@st.cache_resource
-def get_db():
-    key_dict = st.secrets["connections"]["firestore"]
-    creds = service_account.Credentials.from_service_account_info(key_dict)
-    return firestore.Client(credentials=creds, project=key_dict["project_id"])
-
-db = get_db()
-konta_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection("konta")
-klasy_ref = db.collection("szkola").document(NAZWA_SZKOLY).collection("klasy")
+sprawdz_dostep(wymagana_rola="dyrektor")
 
 st.title("🏛️ Panel Zarządzania Dyrektora")
 st.write(f"Zalogowano jako: **{st.session_state.get('zalogowany_id')}**")
-
-COL_PRZEDMIOTY = "przedmioty"
-
-
-def get_szkolne_dane_ref():
-    return db.collection("szkola").document(NAZWA_SZKOLY)
-
-
-def get_przedmioty_ref():
-    return get_szkolne_dane_ref().collection(COL_PRZEDMIOTY)
-
-
-def pobierz_przedmioty() -> dict:
-    struktura = {}
-    for doc in get_przedmioty_ref().stream():
-        tematy = doc.to_dict().get("lista_tematow", [])
-        if not isinstance(tematy, list):
-            tematy = [str(tematy)]
-        struktura[doc.id] = tematy
-    return struktura
-
-
-def zapisz_przedmiot(nazwa: str, tematy: list):
-    if nazwa.strip():
-        get_przedmioty_ref().document(nazwa.strip()).set({"lista_tematow": tematy}, merge=True)
-
-
-def usun_przedmiot(nazwa: str):
-    if nazwa.strip():
-        get_przedmioty_ref().document(nazwa.strip()).delete()
 
 if st.button("Wyloguj się"):
     st.session_state.clear()
@@ -75,40 +38,32 @@ with zakladka1:
         
         submit = st.form_submit_button("Utwórz konto")
         if submit:
-            if not nowe_id or not klucz_api:
-                st.error("Podaj nazwę użytkownika oraz klucz API!")
+            if not nowe_id or not klucz_api or not haslo_konta:
+                st.error("Podaj nazwę użytkownika, klucz API oraz hasło!")
             else:
-                doc_check = konta_ref.document(nowe_id).get()
-                if doc_check.exists:
+                existing = pobierz_konto(nowe_id)
+                if existing:
                     st.error(f"Konto o nazwie '{nowe_id}' już istnieje!")
                 else:
-                    if klasa:
-                        klasy_ref.document(klasa).set({"nazwa": klasa}, merge=True)
-                    konta_ref.document(nowe_id).set({
-                        "user_api_key": klucz_api,
-                        "haslo": haslo_konta,
-                        "rola": rola,
-                        "klasa": klasa,
-                        "postep_tematow": {},
-                        "historia_czatow": {}
-                    })
-                    st.success(f"Pomyślnie utworzono konto: {nowe_id} [{rola}] klasy {klasa or '-'}")
+                    if stworz_konto(nowe_id, rola, klucz_api, klasa, haslo_konta):
+                        st.success(f"Pomyślnie utworzono konto: {nowe_id} [{rola}] klasy {klasa or '-'}")
+                    else:
+                        st.error("Wystąpił błąd podczas tworzenia konta.")
 
 # --- ZAKŁADKA 2: PODGLĄD I EDYCJA KONT ---
 with zakladka2:
     st.subheader("Lista kont")
     
-    # Wyciąganie wszystkich kont z podkolekcji
-    docs = konta_ref.stream()
+    wszystkie = pobierz_wszystkie_konta()
     lista_kont = []
     
-    for doc in docs:
-        dane = doc.to_dict()
+    for dane in wszystkie:
+        api_key = dane.get("user_api_key", "")
         lista_kont.append({
-            "ID (Login)": doc.id,
+            "ID (Login)": dane.get("id"),
             "Rola": dane.get("rola", "brak"),
             "Klasa": dane.get("klasa", "brak"),
-            "Klucz API": "***" + dane.get("user_api_key", "")[-4:] if dane.get("user_api_key") else "Brak"
+            "Klucz API": "***" + api_key[-4:] if api_key else "Brak"
         })
     
     if lista_kont:
@@ -122,7 +77,7 @@ with zakladka2:
             if wybrane_id == st.session_state.get("zalogowany_id"):
                 st.error("Nie możesz usunąć konta, na którym jesteś obecnie zalogowany!")
             else:
-                konta_ref.document(wybrane_id).delete()
+                usun_konto(wybrane_id)
                 st.success(f"Usunięto konto: {wybrane_id}")
                 st.rerun()
     else:
@@ -131,7 +86,7 @@ with zakladka2:
 # --- ZAKŁADKA 3: ZARZĄDZANIE PRZEDMIOTAMI ---
 with zakladka3:
     st.subheader("Zarządzanie przedmiotami i tematami")
-    st.caption("Tematy wpisuj jeden pod drugim!!!")
+    st.caption("Tematy wpisuj jeden pod drugim.")
 
     przedmioty = pobierz_przedmioty()
 
@@ -151,7 +106,7 @@ with zakladka3:
         st.divider()
         wybrany_przedmiot = st.selectbox("Edytuj istniejący przedmiot", list(przedmioty.keys()), key="wybrany_przedmiot")
         tematy_text = "\n".join(przedmioty[wybrany_przedmiot])
-        tematy_input = st.text_area("edytowanie tematów(wpisuj jeden pod drugim)", value=tematy_text, height=220, key="tematy_input")
+        tematy_input = st.text_area("Edytowanie tematów (wpisuj jeden pod drugim)", value=tematy_text, height=220, key="tematy_input")
 
         col1, col2 = st.columns(2)
         with col1:
