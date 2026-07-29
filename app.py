@@ -33,7 +33,7 @@ if __name__ == "__main__":
     id_input = st.text_input("Nazwa konta", key="login_nazwa_konta").strip()
     haslo_input = st.text_input("Hasło konta", type="password", key="login_haslo_konta")
 
-    if st.button("Zaloguj", use_container_width=False):
+    if st.button("Zaloguj"):
         if id_input and haslo_input and zaloguj_uzytkownika(id_input, haslo_input):
             rola = st.session_state.get("role", "uczen")
             if rola == "dyrektor":

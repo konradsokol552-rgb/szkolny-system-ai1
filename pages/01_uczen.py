@@ -208,7 +208,7 @@ with st.sidebar:
         st.error("🔒 TRWA TEST KOŃCOWY!")
         st.caption("Wylogowanie oraz zmiana tematów są zablokowane do czasu ukończenia sprawdzianu.")
     else:
-        if st.button("Wyloguj", use_container_width=True):
+        if st.button("Wyloguj"):
             st.session_state.clear()
             st.switch_page("app.py")
 
@@ -262,7 +262,7 @@ with st.sidebar:
             disabled=w_trakcie_testu
         )
         
-        if st.button("Rozpocznij lekcję", use_container_width=True, disabled=w_trakcie_testu):
+        if st.button("Rozpocznij lekcję", disabled=w_trakcie_testu):
             if not lekcja_aktywna:
                 st.error("Nauczyciel nie aktywował jeszcze lekcji.")
             else:
