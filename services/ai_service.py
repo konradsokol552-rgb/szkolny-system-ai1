@@ -78,7 +78,7 @@ def zapytaj_ai(
         pass  # Przejście do REST fallback w razie braku biblioteki lub innego błedu
 
     # --- REST FALLBACK (Z powtórzeniami przy 429) ---
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
 
     contents = [
         {
