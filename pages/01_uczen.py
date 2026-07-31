@@ -330,6 +330,12 @@ if "aktualny_temat" not in st.session_state:
     st.bar_chart(pd.DataFrame.from_dict(tygodnie_dane, orient='index', columns=['Ilość']))
         
 else:
+    # SPRAWDZANIE I WYŚWIETLANIE BALONÓW
+    if st.session_state.get("pokaz_balony"):
+        st.balloons()
+        st.toast("🎉 Temat zaliczony!", icon="🎈")
+        st.session_state.pokaz_balony = False  # Czyścimy po wyrenderowaniu
+
     st.caption(f"📖 Temat: {st.session_state.aktualny_temat}")
     
     # --- PRZYCISK WEZWANIA POMOCY (SOS) ---
@@ -426,10 +432,6 @@ else:
                             "licznik": st.session_state.licznik_zadan
                         }
                         st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
-
-                    if st.session_state.get("pokaz_balony"):
-                        st.balloons()
-                        st.session_state.pokaz_balony = False  # Resetujemy flagę, żeby nie latały przy każdym kliknięciu
 
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
