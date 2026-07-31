@@ -420,7 +420,6 @@ else:
 
                     if "GRATULACJE! Temat ZALICZONY" in odp:
                         st.session_state.pokaz_balony = True
-                        st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
