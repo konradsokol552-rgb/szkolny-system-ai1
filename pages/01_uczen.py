@@ -418,7 +418,15 @@ else:
                             st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
-                    if "[KONIEC SPRAWDZIANU]" in odp:
+                        st.balloons()
+                        st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
+                            "status": "ZALICZONY",
+                            "data": datetime.now().strftime("%Y-%m-%d"),
+                            "licznik": st.session_state.licznik_zadan
+                        }
+                        st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
+
+                    if "xvz" in odp:
                         st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
