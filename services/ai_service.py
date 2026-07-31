@@ -64,7 +64,7 @@ def zapytaj_ai(
         
         # Próba wygenerowania odpowiedzi przez SDK
         response = client.models.generate_content(
-            model="gemini-1.5-flash-lite",
+            model="gemini-3.5-flash-lite",
             contents=contents_sdk,
             config={
                 "system_instruction": full_system_instruction,
