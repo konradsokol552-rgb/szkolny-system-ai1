@@ -419,6 +419,7 @@ else:
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
                     if "GRATULACJE! Temat ZALICZONY" in odp:
+                        st.session_state.pokaz_balony = True
                         st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
@@ -426,6 +427,10 @@ else:
                             "licznik": st.session_state.licznik_zadan
                         }
                         st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
+
+                    if st.session_state.get("pokaz_balony"):
+                        st.balloons()
+                        st.session_state.pokaz_balony = False  # Resetujemy flagę, żeby nie latały przy każdym kliknięciu
 
                     if "[ZALICZONE]" in odp:
                         st.session_state.licznik_zadan = obecny_licznik + 1
