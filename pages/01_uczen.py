@@ -418,24 +418,17 @@ else:
                             st.session_state.postep_tematow[temat_aktyw]["ma_sprawdzian"] = False
                         odp = odp.replace("[KONIEC SPRAWDZIANU]", "").strip()
 
-                    if "[ZALICZONE]" in odp:
-                        st.session_state.licznik_zadan = obecny_licznik + 1
-                        
-                        if st.session_state.licznik_zadan >= 8:
-                            st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
-                                "status": "ZALICZONY",
-                                "data": datetime.now().strftime("%Y-%m-%d"),
-                                "licznik": st.session_state.licznik_zadan
-                            }
-                            st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
-                    
-                    if st.session_state.licznik_zadan >= 8 and "GRATULACJE! Temat ZALICZONY" in odp:
+                    if st.session_state.licznik_zadan >= 8 or "GRATULACJE! Temat ZALICZONY" in odp:
                         st.balloons()
                         st.session_state.postep_tematow[st.session_state.aktualny_temat] = {
                             "status": "ZALICZONY",
                             "data": datetime.now().strftime("%Y-%m-%d"),
-                            "licznik": st.session_state.get("licznik_zadan", 8)
+                            "licznik": st.session_state.licznik_zadan
                         }
+                        st.success("🎉 GRATULACJE! Temat ZALICZONY. Masz czas wolny, możesz zrobić następny temat albo i nie.")
+
+                    if "[ZALICZONE]" in odp:
+                        st.session_state.licznik_zadan = obecny_licznik + 1
                     
                     czysta_odp = odp.replace("[ZALICZONE]", "").strip()
                     st.session_state.messages.append({"role": "assistant", "content": czysta_odp})
