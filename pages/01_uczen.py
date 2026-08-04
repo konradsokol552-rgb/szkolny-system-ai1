@@ -209,6 +209,19 @@ if lekcja_aktywna and w_trakcie_testu:
         targetWin.addEventListener("beforeunload", function(e) {
             zglosOszustwo();
         });
+
+        // --- 4. CAŁKOWITE ZABLOKOWANIE KLIKANIA W LINKI (A / HREF) ---
+        targetDoc.addEventListener("click", function(e) {
+            let el = e.target;
+            while (el && el !== targetDoc) {
+                if (el.tagName === 'A' || (el.hasAttribute && el.hasAttribute('href'))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+                el = el.parentNode;
+            }
+        }, true);
     </script>
     """, height=0)
 

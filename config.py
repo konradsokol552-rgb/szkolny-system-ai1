@@ -32,8 +32,9 @@ def ustaw_czysty_interfejs(ukryj_sidebar: bool = False) -> None:
         .stViewerBadge {display: none !important; visibility: hidden !important;}
         .stAppDeployButton {display: none !important; visibility: hidden !important;}
         .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important; margin-bottom: 0 !important;}
-        a[href*="streamlit.io"] {display: none !important; pointer-events: none !important;}
-        a[href*="github.com"] {display: none !important; pointer-events: none !important;}
+        a { pointer-events: none !important; cursor: default !important; text-decoration: none !important; }
+        a[href*="streamlit.io"] { display: none !important; pointer-events: none !important; }
+        a[href*="github.com"] { display: none !important; pointer-events: none !important; }
         </style>
         """
     if ukryj_sidebar:
