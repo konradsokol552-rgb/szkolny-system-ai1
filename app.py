@@ -1,3 +1,4 @@
+import streamlit as st
 from config import HASLO_SYSTEMOWE, ustaw_czysty_interfejs
 from services.auth_service import zaloguj_uzytkownika, stworz_konto
 

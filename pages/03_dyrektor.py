@@ -1,3 +1,4 @@
+import streamlit as st
 from config import ustaw_czysty_interfejs
 from services.auth_service import sprawdz_dostep, stworz_konto
 from services.db_service import (
