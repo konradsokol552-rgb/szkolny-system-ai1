@@ -1,26 +1,5 @@
-import streamlit as st
-from config import HASLO_SYSTEMOWE
+from config import HASLO_SYSTEMOWE, ustaw_czysty_interfejs
 from services.auth_service import zaloguj_uzytkownika, stworz_konto
-
-
-def ustaw_czysty_interfejs(ukryj_sidebar: bool = False) -> None:
-    """Stosuje niestandardowe style CSS ukrywające stopkę i opcjonalnie sidebar Streamlita."""
-    style = """
-        <style>
-        footer {display: none !important; visibility: hidden !important; height: 0 !important;}
-        [data-testid="stFooter"] {display: none !important; visibility: hidden !important;}
-        [data-testid="stViewerBadge"] {display: none !important; visibility: hidden !important;}
-        .stViewerBadge {display: none !important; visibility: hidden !important;}
-        .stAppDeployButton {display: none !important; visibility: hidden !important;}
-        .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important;}
-        """
-    if ukryj_sidebar:
-        style += """
-        [data-testid="stSidebar"] {display: none !important;}
-        [data-testid="collapsedSidebar"] {display: none !important;}
-        """
-    style += "</style>"
-    st.markdown(style, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":

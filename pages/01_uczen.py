@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import STREFA_PL
+from config import STREFA_PL, ustaw_czysty_interfejs
 from services.auth_service import sprawdz_dostep
 from services.ai_service import zapytaj_ai
 from services.db_service import (
@@ -19,6 +19,7 @@ from services.db_service import (
 # 1. STRAŻNIK DOSTĘPU I INICJALIZACJA
 # =====================================================================
 sprawdz_dostep(wymagana_rola="uczen")
+ustaw_czysty_interfejs(ukryj_sidebar=False)
 
 user_id = st.session_state.zalogowany_id
 
@@ -179,6 +180,7 @@ if lekcja_aktywna and w_trakcie_testu:
             wyzwolRerunStreamlit();
         }
 
+        // --- 3. NASŁUCHIWANIE ZDARZEŃ (WIDOCZNOŚĆ + FOKUS OKNA) ---
         targetDoc.addEventListener("visibilitychange", function() {
             if (targetDoc.visibilityState === 'hidden') {
                 zglosOszustwo();
@@ -189,6 +191,19 @@ if lekcja_aktywna and w_trakcie_testu:
                     wyzwolRerunStreamlit();
                 }
             }
+        });
+
+        // Wykrywanie utraty fokusu (np. kliknięcie aplikacji na dolnym pasku w trybie okienkowym / Alt+Tab / zmiana okna)
+        targetWin.addEventListener("blur", function() {
+            setTimeout(function() {
+                if (!targetDoc.hasFocus()) {
+                    zglosOszustwo();
+                }
+            }, 200);
+        });
+
+        targetWin.addEventListener("pagehide", function() {
+            zglosOszustwo();
         });
 
         targetWin.addEventListener("beforeunload", function(e) {

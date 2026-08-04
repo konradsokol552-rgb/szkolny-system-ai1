@@ -1,5 +1,4 @@
-import streamlit as st
-
+from config import ustaw_czysty_interfejs
 from services.auth_service import sprawdz_dostep, stworz_konto
 from services.db_service import (
     pobierz_konto,
@@ -14,6 +13,7 @@ st.set_page_config(page_title="Panel Dyrektora", layout="wide")
 
 # Ochrona dostępu - tylko dla zalogowanego dyrektora
 sprawdz_dostep(wymagana_rola="dyrektor")
+ustaw_czysty_interfejs(ukryj_sidebar=False)
 
 st.title("🏛️ Panel Zarządzania Dyrektora")
 st.write(f"Zalogowano jako: **{st.session_state.get('zalogowany_id')}**")
