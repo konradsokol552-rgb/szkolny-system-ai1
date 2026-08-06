@@ -19,6 +19,7 @@ from services.db_service import (
 # 1. STRAŻNIK DOSTĘPU I INICJALIZACJA
 # =====================================================================
 sprawdz_dostep(wymagana_rola="uczen")
+st.set_page_config(page_title="Dziennik Ucznia", initial_sidebar_state="expanded")
 ustaw_czysty_interfejs(ukryj_sidebar=False)
 
 user_id = st.session_state.zalogowany_id

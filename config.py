@@ -21,16 +21,25 @@ def ustaw_czysty_interfejs(ukryj_sidebar: bool = False) -> None:
     style = """
         <style>
         footer {display: none !important; visibility: hidden !important; height: 0 !important; opacity: 0 !important; pointer-events: none !important;}
-        header {display: none !important; visibility: hidden !important; height: 0 !important;}
         #MainMenu {display: none !important; visibility: hidden !important;}
         [data-testid="stFooter"] {display: none !important; visibility: hidden !important; height: 0 !important;}
-        [data-testid="stHeader"] {display: none !important; visibility: hidden !important; height: 0 !important;}
         [data-testid="stToolbar"] {display: none !important; visibility: hidden !important;}
         [data-testid="stDecoration"] {display: none !important; visibility: hidden !important;}
         [data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
         [data-testid="stViewerBadge"] {display: none !important; visibility: hidden !important;}
         .stViewerBadge {display: none !important; visibility: hidden !important;}
         .stAppDeployButton {display: none !important; visibility: hidden !important;}
+        [data-testid="stHeader"] { background: transparent !important; color: inherit !important; }
+        /* Upewnienie się, że przycisk otwierania bocznego paska jest widoczny na telefonie */
+        [data-testid="stHeader"] button,
+        button[aria-label*="sidebar"],
+        button[aria-label*="Sidebar"],
+        [data-testid="baseButton-header"] {
+            display: inline-flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 999999 !important;
+        }
         .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important; margin-bottom: 0 !important;}
         a { pointer-events: none !important; cursor: default !important; text-decoration: none !important; }
         a[href*="streamlit.io"] { display: none !important; pointer-events: none !important; }
