@@ -14,47 +14,6 @@ DOC_LEKCJA_GLOBAL = "globalna"
 # Konfiguracja regionalna
 STREFA_PL = ZoneInfo("Europe/Warsaw")
 
-import streamlit as st
-
-def ustaw_czysty_interfejs(ukryj_sidebar: bool = False) -> None:
-    """Ukrywa stopki, paski narzędzi, nagłówki oraz zewnętrze linki Streamlit."""
-    style = """
-        <style>
-        footer {display: none !important; visibility: hidden !important; height: 0 !important; opacity: 0 !important; pointer-events: none !important;}
-        #MainMenu {display: none !important; visibility: hidden !important;}
-        [data-testid="stFooter"] {display: none !important; visibility: hidden !important; height: 0 !important;}
-        [data-testid="stToolbar"] {display: none !important; visibility: hidden !important;}
-        [data-testid="stDecoration"] {display: none !important; visibility: hidden !important;}
-        [data-testid="stStatusWidget"] {display: none !important; visibility: hidden !important;}
-        [data-testid="stViewerBadge"] {display: none !important; visibility: hidden !important;}
-        .stViewerBadge {display: none !important; visibility: hidden !important;}
-        .stAppDeployButton {display: none !important; visibility: hidden !important;}
-        [data-testid="stHeader"] { background: transparent !important; color: inherit !important; }
-        /* Upewnienie się, że przycisk otwierania bocznego paska jest widoczny na telefonie */
-        [data-testid="stHeader"] button,
-        button[aria-label*="sidebar"],
-        button[aria-label*="Sidebar"],
-        [data-testid="baseButton-header"] {
-            display: inline-flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            z-index: 999999 !important;
-        }
-        .stAppViewMain {bottom: 0 !important; padding-bottom: 0 !important; margin-bottom: 0 !important;}
-        a { pointer-events: none !important; cursor: default !important; text-decoration: none !important; }
-        a[href*="streamlit.io"] { display: none !important; pointer-events: none !important; }
-        a[href*="github.com"] { display: none !important; pointer-events: none !important; }
-        </style>
-        """
-    if ukryj_sidebar:
-        style += """
-        <style>
-        [data-testid="stSidebar"] {display: none !important;}
-        [data-testid="collapsedSidebar"] {display: none !important;}
-        </style>
-        """
-    st.markdown(style, unsafe_allow_html=True)
-
 # System Prompt dla AI Tutora
 SYSTEM_PROMPT = """
 Jesteś Autonomicznym Systemem Edukacyjnym. Twoim zadaniem jest przeprowadzenie ucznia przez wybrany temat według ściśle określonego algorytmu.

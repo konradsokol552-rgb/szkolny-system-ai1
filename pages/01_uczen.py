@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from config import STREFA_PL, ustaw_czysty_interfejs
+from config import STREFA_PL
 from services.auth_service import sprawdz_dostep
 from services.ai_service import zapytaj_ai
 from services.db_service import (
@@ -20,7 +20,6 @@ from services.db_service import (
 # =====================================================================
 sprawdz_dostep(wymagana_rola="uczen")
 st.set_page_config(page_title="Dziennik Ucznia", initial_sidebar_state="expanded")
-ustaw_czysty_interfejs(ukryj_sidebar=False)
 
 user_id = st.session_state.zalogowany_id
 
@@ -210,19 +209,6 @@ if lekcja_aktywna and w_trakcie_testu:
         targetWin.addEventListener("beforeunload", function(e) {
             zglosOszustwo();
         });
-
-        // --- 4. CAŁKOWITE ZABLOKOWANIE KLIKANIA W LINKI (A / HREF) ---
-        targetDoc.addEventListener("click", function(e) {
-            let el = e.target;
-            while (el && el !== targetDoc) {
-                if (el.tagName === 'A' || (el.hasAttribute && el.hasAttribute('href'))) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false;
-                }
-                el = el.parentNode;
-            }
-        }, true);
     </script>
     """, height=0)
 

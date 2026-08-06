@@ -1,11 +1,10 @@
 import streamlit as st
-from config import HASLO_SYSTEMOWE, ustaw_czysty_interfejs
+from config import HASLO_SYSTEMOWE
 from services.auth_service import zaloguj_uzytkownika, stworz_konto
 
 
 if __name__ == "__main__":
     st.set_page_config(page_title="szkolny-system-ai.streamlit.app", layout="centered")
-    ustaw_czysty_interfejs(ukryj_sidebar=True)
 
     st.title("🏫 Logowanie do Systemu")
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 import streamlit as st
 
-from config import STREFA_PL, ustaw_czysty_interfejs
+from config import STREFA_PL
 from services.auth_service import sprawdz_dostep
 from services.db_service import (
     pobierz_uczniow_klasy,
@@ -14,7 +14,6 @@ from services.db_service import (
 
 # --- STRAŻNIK DOSTĘPU ---
 sprawdz_dostep(wymagana_rola="nauczyciel")
-ustaw_czysty_interfejs(ukryj_sidebar=False)
 
 # --- UI: SIDEBAR ---
 @st.fragment(run_every=3)
